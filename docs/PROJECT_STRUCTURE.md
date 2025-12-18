@@ -53,51 +53,51 @@
 - ⚠️ = Częściowo wspólna (hybrid approach)
 - ❌ = Specyficzna dla platformy (nie da się współdzielić)
 
-### 1.2 Performance Gains (Benchmarks)
+### 1.2 Expected Performance Characteristics
 
-**Test Case**: 100MB projekt, 50 wersji, 500 plików
+**Rust Core Advantages** (Theoretical):
 
-| Operacja | Pure TypeScript | Rust Core + TS | Speedup | ROI |
-|----------|----------------|----------------|---------|-----|
-| SHA-256 Hash (100MB) | 2,500ms | 500ms | **5.0x** | 🟢 |
-| Diff Computation (10K lines) | 8,000ms | 1,200ms | **6.7x** | 🟢 |
-| Patch Apply (5K lines) | 3,500ms | 800ms | **4.4x** | 🟢 |
-| ZIP Compress (100MB) | 4,200ms | 900ms | **4.7x** | 🟢 |
-| ZIP Decompress (100MB) | 3,800ms | 950ms | **4.0x** | 🟢 |
-| JSON Parse (5MB manifest) | 150ms | 30ms | **5.0x** | 🟡 |
-| GC (Mark & Sweep) | 600ms | 120ms | **5.0x** | 🟢 |
-| Version Graph (BFS) | 45ms | 8ms | **5.6x** | 🟡 |
-| **TOTAL (Save Checkpoint)** | **18,950ms** | **3,550ms** | **5.3x** | 🟢 |
+| Operation Category | Expected Improvement | Reasoning |
+|-------------------|---------------------|-----------|
+| SHA-256 Hashing | Significant | Native crypto vs JavaScript implementation |
+| Diff Computation | Very Significant | Compiled algorithm vs interpreted |
+| Patch Apply | Significant | String manipulation in compiled code |
+| ZIP Compression | Significant | Native flate2 vs JavaScript |
+| JSON Parsing | Moderate | serde (compiled) vs JSON.parse |
+| GC Operations | Significant | Manual memory management vs GC |
+| Graph Operations | Moderate | Compiled data structures |
 
-**ROI**:
-- 🟢 Green: Worth it (>3x speedup, frequent operation)
-- 🟡 Yellow: Nice to have (good speedup, but less critical)
-- 🔴 Red: Not worth (overhead > benefit)
+**Priority Classification**:
+- 🟢 High: Frequent operations (save, load)
+- 🟡 Medium: Occasional operations (restore, GC)
+- 🔴 Low: Rare operations (deep history)
 
-### 1.3 Memory Usage
+### 1.3 Memory Characteristics
 
-| Scenario | Pure TypeScript | Rust Core + TS | Improvement |
-|----------|----------------|----------------|-------------|
-| Idle (loaded) | 50 MB | 45 MB | -10% |
-| Processing (save) | 250 MB | 120 MB | -52% |
-| Peak (large file) | 800 MB | 400 MB | -50% |
+**Rust Core Advantages**:
+- **No GC Overhead**: Manual memory management, predictable allocations
+- **Stack Allocation**: More efficient for temporary data
+- **Zero-Copy Operations**: Reduce memory copies where possible
+- **Efficient Layout**: Struct packing, cache-friendly data structures
 
-**Dlaczego Rust używa mniej?**:
-- Brak Garbage Collector (no GC overhead)
-- Stack allocation > Heap allocation
-- Zero-copy operations
-- Efektywne memory layout (struct packing)
+**Expected Benefits**:
+- Lower baseline memory usage
+- No GC pauses during operations
+- Predictable memory patterns
+- Better for large files (>100MB)
 
-### 1.4 Bundle Size
+### 1.4 Bundle Size Considerations
 
-| Package | Pure TypeScript | Rust Core + WASM | Delta |
-|---------|----------------|------------------|-------|
-| Core Logic | 120 KB | 80 KB | -40 KB |
-| WASM Binary | - | 600 KB | +600 KB |
-| Dependencies | 800 KB | 200 KB | -600 KB |
-| **Total (min+gzip)** | **920 KB** | **880 KB** | **-40 KB** |
+**Trade-offs**:
 
-**Uwaga**: WASM jest większy, ale eliminuje dependencies (fflate, diff-match-patch)
+| Aspect | Pure TypeScript | Rust Core + WASM |
+|--------|----------------|------------------|
+| Core Logic | Smaller (TypeScript) | Minimal (compiled) |
+| WASM Binary | None | ~500-800 KB (estimated) |
+| Dependencies | Multiple JS libs | Fewer (built into WASM) |
+| **Trade-off** | Smaller w/o WASM | Larger initially, fewer deps |
+
+**Note**: WASM adds initial size but may reduce overall bundle with dependencies included
 
 ### 1.5 Finalna Decyzja
 

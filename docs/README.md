@@ -52,53 +52,47 @@ This documentation follows a **linear narrative** - each document builds upon pr
 
 ---
 
-## Quick Reference: Key Technical Metrics
+## Quick Reference: Key Technical Characteristics
 
-### Performance Targets (Rust Core vs Pure TypeScript)
+### Performance Considerations
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Operation          │ Pure TS  │ Rust Core │ Speedup │ Priority │
-├────────────────────┼──────────┼───────────┼─────────┼──────────┤
-│ SHA-256 (100MB)    │ 2,500ms  │   500ms   │  5.0x   │    🔴    │
-│ Diff (10K lines)   │ 8,000ms  │ 1,200ms   │  6.7x   │    🔴    │
-│ Patch Apply        │ 3,500ms  │   800ms   │  4.4x   │    🟡    │
-│ ZIP Compress       │ 4,200ms  │   900ms   │  4.7x   │    🔴    │
-│ GC (Mark & Sweep)  │   600ms  │   120ms   │  5.0x   │    🟢    │
-│ ─────────────────────────────────────────────────────────────── │
-│ TOTAL (Checkpoint) │18,950ms  │ 3,550ms   │  5.3x   │    🔴    │
-└─────────────────────────────────────────────────────────────────┘
+**Rust Core Advantages**:
+- **SHA-256 Hashing**: Native crypto operations (expected faster than WebCrypto)
+- **Diff Computation**: Compiled Myers algorithm (expected faster than JavaScript)
+- **ZIP Compression**: Native flate2 library (expected faster than fflate)
+- **Memory Management**: No GC overhead, predictable allocations
+- **Parallelization**: Native threads (better than Web Workers overhead)
 
-🔴 Critical Path (frequent operations)
-🟡 Important (moderate frequency)
-🟢 Maintenance (infrequent)
-```
+**Critical Operations** (High Frequency):
+- Save checkpoint (diff + hash + compress)
+- File content access (HEAD version)
+- Manifest parsing
 
-### Memory Efficiency
+**Important Operations** (Moderate Frequency):
+- Restore to previous version
+- Binary file deduplication
 
-```
-┌──────────────────────────────────────────────────────┐
-│ Scenario          │ Pure TS │ Rust Core │ Reduction │
-├───────────────────┼─────────┼───────────┼───────────┤
-│ Idle (loaded)     │  50 MB  │   45 MB   │    -10%   │
-│ Processing (save) │ 250 MB  │  120 MB   │    -52%   │
-│ Peak (large file) │ 800 MB  │  400 MB   │    -50%   │
-└──────────────────────────────────────────────────────┘
-```
+**Maintenance Operations** (Low Frequency):
+- Garbage collection
+- Deep history access
 
-### Bundle Size Analysis
+### Architectural Trade-offs
 
-```
-┌─────────────────────────────────────────────────────────┐
-│ Component        │ Pure TS │ Rust+WASM │ Delta       │
-├──────────────────┼─────────┼───────────┼─────────────┤
-│ Core Logic       │ 120 KB  │   80 KB   │  -40 KB     │
-│ WASM Binary      │    -    │  600 KB   │ +600 KB     │
-│ Dependencies     │ 800 KB  │  200 KB   │ -600 KB     │
-│ ────────────────────────────────────────────────────── │
-│ TOTAL (min+gzip) │ 920 KB  │  880 KB   │  -40 KB ✅  │
-└─────────────────────────────────────────────────────────┘
-```
+**Rust Core Approach**:
+- ✅ Better performance for CPU-intensive operations
+- ✅ Single codebase for multiple languages (JS, Python)
+- ✅ Predictable memory usage (no GC pauses)
+- ⚠️ WASM overhead in browser (20-30% slower than native)
+- ⚠️ Additional build complexity
+- ⚠️ Larger initial binary size
+
+**Pure TypeScript Approach**:
+- ✅ Simpler development workflow
+- ✅ Smaller bundle (no WASM binary)
+- ✅ Easier debugging
+- ⚠️ Slower for CPU-intensive operations
+- ⚠️ GC pauses during large operations
+- ⚠️ Separate implementation per language
 
 ---
 
@@ -144,10 +138,10 @@ graph TB
 ```
 
 **Justification**: 
-- ✅ 5.3x overall performance improvement
-- ✅ Single codebase for multiple languages
-- ✅ -50% memory usage (no GC overhead)
-- ✅ Production-grade performance
+- ✅ Expected better performance for CPU-intensive operations
+- ✅ Single codebase for multiple languages (JS, Python)
+- ✅ Reduced memory overhead (no GC)
+- ✅ Production-grade reliability (memory safety)
 
 ### Decision 2: Reverse Delta Strategy
 
@@ -171,13 +165,16 @@ graph TB
 └─────────────────────────────────────────────────────────────────┘
 
 Use Case Analysis:
-┌────────────────────┬──────────┬────────────┐
-│ Operation          │ Frequency│ Optimized? │
-├────────────────────┼──────────┼────────────┤
-│ Work with HEAD     │   95%    │     ✅     │
-│ View last 5 vers.  │    4%    │     🟡     │
-│ Deep history       │    1%    │     ❌     │
-└────────────────────┴──────────┴────────────┘
+┌────────────────────┬───────────┬────────────┐
+│ Operation          │ Frequency │ Optimized? │
+├────────────────────┼───────────┼────────────┤
+│ Work with HEAD     │ Very High │     ✅     │
+│ View recent vers.  │   Medium  │     🟡     │
+│ Deep history       │    Low    │     ❌     │
+└────────────────────┴───────────┴────────────┘
+
+Assumption: Most users work with the current version (HEAD),
+occasionally review recent history, rarely access deep history.
 ```
 
 ---

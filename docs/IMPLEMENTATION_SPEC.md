@@ -1528,19 +1528,19 @@ self.onmessage = (e) => {
 
 ### 8.4 Dlaczego Map zamiast Object dla fileMap?
 
-**Performance** (1000 keys):
-- Object: ~0.5ms lookup
-- Map: ~0.1ms lookup
+**Performance**:
+- Map: Generally faster lookup for large datasets
+- Object: Optimized by V8 for small objects
 
 **Features**:
-- Object: Only string keys
-- Map: Any key, iteration order, size property
+- Object: Only string keys, no guaranteed iteration order
+- Map: Any key type, guaranteed insertion order, size property
 
 **Memory**:
-- Equivalent dla small (<100 keys)
-- Map 10-20% overhead dla large
+- Similar for small collections (<100 keys)
+- Map has slight overhead for large collections
 
-**Decyzja**: Map dla performance + features
+**Decyzja**: Map dla features + better performance scaling
 
 ---
 
