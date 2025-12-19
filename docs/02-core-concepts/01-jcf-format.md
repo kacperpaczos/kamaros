@@ -13,6 +13,12 @@ Format JCF (JSON Container Format) to format pliku oparty na ZIP, zaprojektowany
 
 **Ważne**: Biblioteka nie interpretuje zawartości plików - przechowuje dowolne pliki (`.js`, `.glsl`, `.json`, `.png`, `.fbx`, etc.) zgodnie ze specyfikacją formatu JCF. To aplikacja decyduje, jakie pliki przechowuje i jak je interpretuje.
 
+> 📖 **Przykłady**: Zobacz [examples/](./examples/) dla konkretnych przykładów plików specyfikacji:
+> - [manifest-example.json](./examples/manifest-example.json) - Pełny przykład manifestu
+> - [manifest-minimal.json](./examples/manifest-minimal.json) - Minimalny poprawny manifest
+> - [format-specification.md](./examples/format-specification.md) - Szczegółowa specyfikacja z przykładami
+> - [usage-examples.md](./examples/usage-examples.md) - Przykłady użycia w różnych scenariuszach
+
 ## Podstawowe założenia
 
 ### Dlaczego ZIP?

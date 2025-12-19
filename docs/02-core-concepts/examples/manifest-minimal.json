@@ -1,0 +1,41 @@
+{
+  "formatVersion": "1.0.0",
+  "metadata": {
+    "author": "Developer",
+    "created_at": "2025-01-15T10:00:00Z",
+    "last_modified": "2025-01-15T10:00:00Z",
+    "application": "JCF Manager v1.0.0"
+  },
+  "fileMap": {
+    "readme.txt": {
+      "type": "text",
+      "inodeId": "00000000-0000-0000-0000-000000000001",
+      "currentHash": "abc123def456...",
+      "encoding": "utf-8",
+      "size": 256
+    }
+  },
+  "versionHistory": [
+    {
+      "id": "v1-initial",
+      "timestamp": "2025-01-15T10:00:00Z",
+      "message": "Initial commit",
+      "author": "Developer",
+      "parentId": null,
+      "fileStates": {
+        "readme.txt": {
+          "inodeId": "00000000-0000-0000-0000-000000000001",
+          "path": "readme.txt",
+          "hash": "abc123def456...",
+          "contentRef": ".store/deltas/v1_readme.txt.patch",
+          "size": 256,
+          "changeType": "added"
+        }
+      }
+    }
+  ],
+  "refs": {
+    "head": "v1-initial"
+  },
+  "renameLog": []
+}
