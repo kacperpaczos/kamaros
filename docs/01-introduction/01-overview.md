@@ -181,3 +181,4 @@ Teraz, gdy rozumiesz czym jest Kamaros, przejdźmy do szczegółowego problemu, 
 
 [← Back to Index](../README.md) | [Next: Problem Statement →](02-problem-statement.md)
 
+

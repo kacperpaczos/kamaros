@@ -76,3 +76,4 @@ Adapter Pattern - ten sam kod działa wszędzie:
 
 [← Back: Problem Statement](02-problem-statement.md) | [Next: Use Cases →](04-use-cases.md)
 
+
