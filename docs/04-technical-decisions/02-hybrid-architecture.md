@@ -40,3 +40,4 @@ See [`PROJECT_STRUCTURE.md`](01-rust-vs-typescript.md) for detailed structure.
 
 [← Back: Rust vs TypeScript](01-rust-vs-typescript.md) | [Next: Compression Library →](03-compression-library.md)
 
+
