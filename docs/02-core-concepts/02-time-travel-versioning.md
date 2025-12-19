@@ -32,3 +32,4 @@ See [`05-algorithms/02-restore-version.md`](../05-algorithms/02-restore-version.
 
 [← Back: JCF Format](01-jcf-format.md) | [Next: Reverse Delta Strategy →](03-reverse-delta-strategy.md)
 
+
