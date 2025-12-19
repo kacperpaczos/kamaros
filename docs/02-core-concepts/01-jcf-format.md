@@ -4,6 +4,15 @@
 
 Format JCF (JSON Container Format) to format pliku oparty na ZIP, zaprojektowany dla przechowywania projektów z pełną historią wersji. Łączy prostotę ZIP z zaawansowanym systemem wersjonowania.
 
+**Biblioteka JCF Manager** działa według specyfikacji formatu:
+- **Tworzy lub wczytuje specyfikację** (`manifest.json`) - definicję struktury projektu
+- **Wczytuje pliki zgodnie ze specyfikacją** - odczytuje i rekonstruuje z formatu JCF
+- **Zapisuje pliki zgodnie ze specyfikacją** - zapisuje do formatu JCF z wersjonowaniem
+- **Waliduje zgodność ze specyfikacją** - sprawdza integralność i poprawność danych
+- **Wersjonuje zgodnie ze specyfikacją** - zarządza historią zmian zgodnie z formatem
+
+**Ważne**: Biblioteka nie interpretuje zawartości plików - przechowuje dowolne pliki (`.js`, `.glsl`, `.json`, `.png`, `.fbx`, etc.) zgodnie ze specyfikacją formatu JCF. To aplikacja decyduje, jakie pliki przechowuje i jak je interpretuje.
+
 ## Podstawowe założenia
 
 ### Dlaczego ZIP?
@@ -41,15 +50,8 @@ project.jcf (ZIP Archive)
 │   └── Metadata + wersje + fileMap
 │
 ├── content/                          [WORKING COPY]
-│   ├── src/
-│   │   ├── index.js
-│   │   ├── utils.js
-│   │   └── components/
-│   │       └── Button.jsx
-│   ├── assets/
-│   │   ├── logo.png
-│   │   └── icon.svg
-│   └── package.json
+│   └── [dowolne pliki zgodnie ze specyfikacją]
+│       └── (przykład: src/, assets/, config files, etc.)
 │
 └── .store/                           [HISTORY]
     ├── blobs/                        [Content Addressable Storage]
@@ -223,16 +225,22 @@ interface CompressionPolicy {
 
 ### Strategia per typ pliku
 
+Biblioteka rozpoznaje typy plików (tekst vs binary) **tylko dla celów wersjonowania**:
+- **Pliki tekstowe** → reverse delta strategy (efektywne dla zmian)
+- **Pliki binarne** → Content Addressable Storage (deduplikacja)
+
+**To nie jest interpretacja zawartości** - biblioteka nie wie, co to jest `script.js` czy `shader.glsl`, tylko rozpoznaje, że to tekst i używa odpowiedniej strategii wersjonowania.
+
 ```typescript
 function getCompressionLevel(filepath: string): number {
   const ext = getExtension(filepath);
 
-  // Already compressed formats
+  // Already compressed formats - nie kompresuj ponownie
   if (['.png', '.jpg', '.mp4', '.zip'].includes(ext)) {
     return 0; // STORE
   }
 
-  // Text files
+  // Text files - kompresuj dla efektywności
   if (['.js', '.ts', '.json', '.txt', '.md'].includes(ext)) {
     return 6; // DEFLATE
   }

@@ -1,6 +1,6 @@
 # Przegląd architektury systemu
 
-JCF Manager to biblioteka izomorficzna JavaScript/TypeScript do zarządzania plikami projektowymi z wbudowanym systemem wersjonowania Time-Travel.
+**JCF (JSON Content Format)** to inteligentny format pliku oparty na standardowym ZIP archive z wbudowanym systemem wersjonowania Time-Travel. **JCF Manager** to biblioteka wielojęzyczna (TypeScript, Python) z core w Rust do efektywnego zarządzania tym formatem.
 
 ## Kluczowe cechy
 

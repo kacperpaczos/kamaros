@@ -98,6 +98,8 @@ Strumieniowe przetwarzanie, Web Workers dla haszowania, chunked write.
 
 ## Rozwiązanie: Kamaros JCF
 
+**JCF (JSON Content Format)** to inteligentny format pliku oparty na standardowym ZIP archive, który łączy prostotę ZIP z zaawansowanym systemem wersjonowania.
+
 ### Jak Kamaros rozwiązuje te problemy?
 
 | Problem | Rozwiązanie Kamaros |
