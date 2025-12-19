@@ -719,3 +719,4 @@ Sprawdzone wzorce używane w produkcyjnych systemach.
 
 [← Back: Component Interaction](04-component-interaction.md) | [Next: Data Structures →](06-data-structures.md)
 
+
