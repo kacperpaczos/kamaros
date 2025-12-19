@@ -1,40 +1,39 @@
-# 🏗️ Przegląd Architektury JCF Manager
+# Przegląd architektury systemu
 
-## 1. Wprowadzenie
+JCF Manager to biblioteka izomorficzna JavaScript/TypeScript do zarządzania plikami projektowymi z wbudowanym systemem wersjonowania Time-Travel.
 
-**JCF Manager** to biblioteka JavaScript/TypeScript zaprojektowana do zarządzania plikami projektowymi w formacie kontenerowym z wbudowaną historią zmian (Time-Travel Versioning). System umożliwia cofanie się do dowolnego punktu w historii projektu, zachowując przy tym efektywność przechowywania i szybkość dostępu do najnowszej wersji.
+## Kluczowe cechy
 
-## 2. Kluczowe Cechy
+### Format plików
+- Kontener: Standardowy ZIP archive
+- Kompatybilność: Można otworzyć zwykłym unzipperem
+- Mimetype: application/x-jcf
+- Struktura: Samoopisująca się (manifest.json)
 
-### 2.1 Format Plików
-- **Kontener**: Standardowy ZIP archive
-- **Kompatybilność**: Można otworzyć zwykłym unzipperem
-- **Mimetype**: `application/x-jcf`
-- **Struktura**: Samoopisująca się (manifest.json)
+### Time-Travel Versioning
+- Reverse Delta Strategy: Najnowsza wersja zawsze pełna
+- Efficient History: Starsze wersje jako kompresowane delty
+- Binary Deduplication: Content Addressable Storage (CAS)
+- Metadata Rich: Pełna historia zmian z timestampami i autorami
 
-### 2.2 Time-Travel Versioning
-- **Reverse Delta Strategy**: Najnowsza wersja zawsze pełna
-- **Efficient History**: Starsze wersje jako kompresowane delty
-- **Binary Deduplication**: Content Addressable Storage (CAS)
-- **Metadata Rich**: Pełna historia zmian z timestampami i autorami
+### Performance
+- Streaming Support: Obsługa plików >500MB bez ładowania do RAM
+- Multi-threading: Web Workers dla CPU-intensive operacji
+- Lazy Loading: Historie ładowane tylko na żądanie
+- Smart Compression: fflate z automatyczną optymalizacją
 
-### 2.3 Performance
-- **Streaming Support**: Obsługa plików >500MB bez ładowania do RAM
-- **Multi-threading**: Web Workers dla CPU-intensive operacji
-- **Lazy Loading**: Historie ładowane tylko na żądanie
-- **Smart Compression**: fflate z automatyczną optymalizacją
+### Izomorficzność
+- Browser: IndexedDB + File API
+- Node.js: fs/promises
+- Tauri: tauri.fs API
+- Deno/Bun: Gotowe do wsparcia
 
-### 2.4 Izomorficzność
-- **Browser**: IndexedDB + File API
-- **Node.js**: fs/promises
-- **Tauri**: tauri.fs API
-- **Deno/Bun**: Gotowe do wsparcia
-
-## 3. Architektura Wysokopoziomowa
+## Architektura wysokiego poziomu
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    USER APPLICATION                     │
+│                    APLIKACJA UŻYTKOWNIKA                │
+│  (Browser/Node/Tauri/Deno)                              │
 └─────────────────────┬───────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────┐
@@ -60,70 +59,46 @@
 └─────────────┘  └────────────┘  └────────────────────┘
 ```
 
-## 4. Warstwy Systemu
+## Warstwy systemu
 
-### 4.1 API Layer (Warstwa Publiczna)
-**Odpowiedzialność**: Interfejs użytkownika, walidacja wejścia
+### API Layer - Warstwa publiczna
+Odpowiedzialność: Interfejs użytkownika, walidacja wejścia
 
-**Klasy**:
-- `JCFManager` - główny punkt wejścia
-- `JCFConfig` - konfiguracja systemu
+Klasy:
+- JCFManager - główny punkt wejścia
+- JCFConfig - konfiguracja systemu
 
-**Zasady**:
-- Wszystkie metody async (Promise-based)
-- TypeScript strict mode
-- Error handling z custom exceptions
-- Event emitters dla progress tracking
+### Core Layer - Warstwa logiki
+Odpowiedzialność: Implementacja algorytmów biznesowych
 
-### 4.2 Core Layer (Warstwa Logiki)
-**Odpowiedzialność**: Implementacja algorytmów biznesowych
+Moduły:
+- VersionManager - zarządzanie historią commitów
+- FileManager - CRUD operacje na plikach
+- DeltaManager - obliczanie i aplikowanie diff
+- BlobManager - CAS dla plików binarnych
 
-**Moduły**:
-- `VersionManager` - zarządzanie historią commitów
-- `FileManager` - CRUD operacje na plikach
-- `DeltaManager` - obliczanie i aplikowanie diff
-- `BlobManager` - CAS dla plików binarnych
+### Storage Layer - Warstwa przechowywania
+Odpowiedzialność: Abstrakcja dostępu do systemu plików
 
-**Zasady**:
-- Separacja concerns
-- Dependency injection
-- Unit testable
-- Immutable data structures gdzie możliwe
+Pattern: Adapter Pattern
 
-### 4.3 Storage Layer (Warstwa Przechowywania)
-**Odpowiedzialność**: Abstrakcja dostępu do systemu plików
+Implementacje:
+- BrowserAdapter - IndexedDB + File API
+- NodeAdapter - fs/promises
+- TauriAdapter - tauri.fs
+- MemoryAdapter - testy jednostkowe
 
-**Pattern**: Adapter Pattern
+### Worker Layer - Warstwa obliczeniowa
+Odpowiedzialność: Offloading CPU-intensive tasks
 
-**Implementacje**:
-- `BrowserAdapter` - IndexedDB + File API
-- `NodeAdapter` - fs/promises
-- `TauriAdapter` - tauri.fs
-- `MemoryAdapter` - testy jednostkowe
+Workers:
+- HashWorker - SHA-256 hashing
+- DiffWorker - Text diff computation
+- CompressWorker - ZIP compression/decompression
 
-**Zasady**:
-- Interface-first design
-- Streaming API where possible
-- Error handling per platform
-- Transaction support
+## Data flow
 
-### 4.4 Worker Layer (Warstwa Obliczeniowa)
-**Odpowiedzialność**: Offloading CPU-intensive tasks
-
-**Workers**:
-- `HashWorker` - SHA-256 hashing
-- `DiffWorker` - Text diff computation
-- `CompressWorker` - ZIP compression/decompression
-
-**Zasady**:
-- Message passing (structured clone)
-- Graceful degradation (fallback to main thread)
-- Worker pool management
-- Cancellable operations
-
-## 5. Data Flow
-
-### 5.1 Save Checkpoint Flow
+### Save Checkpoint Flow
 
 ```
 User calls saveCheckpoint()
@@ -171,7 +146,7 @@ User calls saveCheckpoint()
 └────────────────────┘
 ```
 
-### 5.2 Restore Version Flow
+### Restore Version Flow
 
 ```
 User calls restoreVersion(id)
@@ -209,28 +184,25 @@ User calls restoreVersion(id)
 └────────────────────┘
 ```
 
-## 6. Kluczowe Decyzje Projektowe
+## Kluczowe decyzje projektowe
 
-### 6.1 Dlaczego Reverse Delta?
+### Dlaczego Reverse Delta?
 
-**Alternatywy rozważane**:
-1. **Forward Delta** (Git-style): Stary→Nowy
-   - ❌ Wymaga przechodzenia całej historii dla HEAD
-   - ✅ Efficient dla old versions
-   
-2. **Full Snapshots**: Każda wersja pełna
-   - ❌ Ogromny rozmiar pliku
-   - ✅ Instant access do każdej wersji
-   
-3. **Reverse Delta** (wybrany): Nowy→Stary
-   - ✅ HEAD zawsze instant
-   - ✅ Reasonable file size
-   - ⚠️ Old versions require reconstruction
+Alternatywy rozważane:
+1. Forward Delta (Git-style): Stary→Nowy
+   - Problem: Wymaga przechodzenia całej historii dla HEAD
 
-**Uzasadnienie**: 
-W 95% przypadków użytkownik pracuje z najnowszą wersją (HEAD). Historia jest używana rzadko i głównie do przeglądania, nie codziennej pracy.
+2. Full Snapshots: Każda wersja pełna
+   - Problem: Ogromny rozmiar pliku
 
-### 6.2 Dlaczego fflate zamiast JSZip?
+3. Reverse Delta (wybrany): Nowy→Stary
+   - Zaletą: HEAD zawsze instant
+   - Reasonable file size
+   - Old versions require reconstruction
+
+Uzasadnienie: 95% czasu pracuje się z najnowszą wersją. Historia jest używana rzadko.
+
+### Dlaczego fflate zamiast JSZip?
 
 | Kryterium | JSZip | fflate | Waga |
 |-----------|-------|--------|------|
@@ -239,22 +211,22 @@ W 95% przypadków użytkownik pracuje z najnowszą wersją (HEAD). Historia jest
 | API Ease | 10/10 | 6/10 | 15% |
 | Streaming | 4/10 | 10/10 | 25% |
 
-**Wynik**: fflate wygrywa (8.4 vs 5.8)
+Wynik: fflate wygrywa (8.4 vs 5.8)
 
-### 6.3 Dlaczego Adapter Pattern?
+### Dlaczego Adapter Pattern?
 
-**Problem**: Różne środowiska mają różne API dla I/O
+Problem: Różne środowiska mają różne API dla I/O
 
-**Rozwiązanie**: Abstrakcja przez interfejs + implementacje per platform
+Rozwiązanie: Abstrakcja przez interfejs + implementacje per platform
 
-**Korzyści**:
+Korzyści:
 - Testability (MockAdapter)
 - Future-proof (nowe platformy bez refactoringu core)
 - Clean separation of concerns
 
-## 7. Performance Targets
+## Performance targets
 
-### 7.1 Benchmarks Celowe
+### Benchmarks celowe
 
 | Operacja | Target | Warunek |
 |----------|--------|---------|
@@ -264,35 +236,35 @@ W 95% przypadków użytkownik pracuje z najnowszą wersją (HEAD). Historia jest
 | Add File (large) | <5s | 100MB binary |
 | GC | <10s | 1000 orphaned blobs |
 
-### 7.2 Memory Constraints
+### Memory constraints
 
-- **Browser**: Max 500MB per operation
-- **Node.js**: Unlimited (ale streaming preferred)
-- **Mobile**: Max 100MB per operation
+- Browser: Max 500MB per operation
+- Node.js: Unlimited (ale streaming preferred)
+- Mobile: Max 100MB per operation
 
-## 8. Security Considerations
+## Security considerations
 
-### 8.1 Threats
+### Threats
 
-1. **ZIP Bombs**: Malicious highly-compressed files
+1. ZIP Bombs: Malicious highly-compressed files
    - Mitigacja: Decompression size limits
-   
-2. **Path Traversal**: `../../etc/passwd` w nazwach plików
+
+2. Path Traversal: ../../etc/passwd w nazwach plików
    - Mitigacja: Path sanitization
-   
-3. **Manifest Tampering**: Ręczna edycja manifest.json
+
+3. Manifest Tampering: Ręczna edycja manifest.json
    - Mitigacja: Checksums + validation
 
-### 8.2 Best Practices
+### Best practices
 
 - Input validation na wszystkich entry points
 - JSON Schema dla manifestu
 - CRC checks dla ZIP entries
 - Atomic writes (temp file → rename)
 
-## 9. Extensibility Points
+## Extensibility points
 
-### 9.1 Plugin System (Future)
+### Plugin system (Future)
 
 ```typescript
 interface JCFPlugin {
@@ -300,10 +272,8 @@ interface JCFPlugin {
   version: string;
   onBeforeSave?: (context: SaveContext) => Promise<void>;
   onAfterSave?: (context: SaveContext) => Promise<void>;
-  onBeforeRestore?: (context: RestoreContext) => Promise<void>;
 }
 
-// Example: Auto-formatter plugin
 class FormatterPlugin implements JCFPlugin {
   async onBeforeSave(context: SaveContext) {
     for (const file of context.changedFiles) {
@@ -315,21 +285,16 @@ class FormatterPlugin implements JCFPlugin {
 }
 ```
 
-### 9.2 Custom Compression Algorithms
+### Custom compression algorithms
 
 ```typescript
 interface CompressionAdapter {
   compress(data: Uint8Array): Promise<Uint8Array>;
   decompress(data: Uint8Array): Promise<Uint8Array>;
 }
-
-// Example: Brotli for text files
-class BrotliAdapter implements CompressionAdapter {
-  // ...
-}
 ```
 
-## 10. Roadmap
+## Roadmap
 
 ### Phase 1: MVP (Obecny)
 - ✅ Basic ZIP structure
@@ -354,35 +319,3 @@ class BrotliAdapter implements CompressionAdapter {
 - 🔮 CLI tools
 - 🔮 GUI explorer
 - 🔮 VS Code extension
-
-## 11. Porównanie z Alternatywami
-
-### 11.1 Git
-- ✅ Git: Mature, proven, powerful
-- ❌ Git: Complex, large footprint, not browser-friendly
-- ✅ JCF: Simple, lightweight, isomorphic
-- ❌ JCF: New, less features
-
-**Use case**: JCF dla single-file projects w browser/electron, Git dla code repositories
-
-### 11.2 Automerge/Yjs
-- ✅ Automerge: CRDT, automatic merge
-- ❌ Automerge: Memory overhead, specific data structures
-- ✅ JCF: Standard files, low overhead
-- ❌ JCF: No automatic merge
-
-**Use case**: Automerge dla collaborative editing, JCF dla versioned storage
-
-## 12. Następne Kroki
-
-1. Przeczytaj [Format JCF](./02-jcf-format.md) dla szczegółów struktury
-2. Zrozum [Reverse Delta Strategy](./03-reverse-delta.md)
-3. Zobacz [API Reference](../api/JCFManager.md) dla implementacji
-4. Sprawdź [Examples](../examples/01-quickstart.md) dla praktyki
-
----
-
-**Autorzy**: Zespół JCF Manager  
-**Ostatnia aktualizacja**: 2025-12-18  
-**Wersja dokumentu**: 1.0.0
-
