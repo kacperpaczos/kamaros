@@ -340,3 +340,4 @@ Dokumentacja, testy, release v1.0.0.
 
 [← Back: Contributing](05-contributing.md) | [Up to Development](01-setup-environment.md)
 
+
