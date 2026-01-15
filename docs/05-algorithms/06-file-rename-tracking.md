@@ -67,15 +67,16 @@ async function identifyFileChanges(
     
     if (!headEntry) {
       // New file or renamed file?
-      // Check if inodeId exists elsewhere
-      const existingInode = this.findInodeInHistory(fileEntry.inodeId);
+      // Check if inodeId exists elsewhere in HEAD (NOT whole history)
+      // We are looking for a transition from HEAD to Current state.
+      const existingInodePath = this.findInodeInHeadVersion(fileEntry.inodeId, headFiles);
       
-      if (existingInode) {
+      if (existingInodePath) {
         // This is a rename!
         changes.push({
           type: 'renamed',
           inodeId: fileEntry.inodeId,
-          fromPath: existingInode.path,
+          fromPath: existingInodePath,
           toPath: path
         });
       } else {
@@ -109,11 +110,11 @@ async function identifyFileChanges(
   for (const [path, headEntry] of headFiles) {
     if (!currentFiles.has(path)) {
       // File deleted or renamed?
-      // Check if inodeId exists elsewhere
-      const existingPath = this.findInodeInCurrent(headEntry.inodeId);
+      // Check if inodeId exists elsewhere in Current
+      const existingPath = this.findInodeInCurrent(headEntry.inodeId, currentFiles);
       
       if (existingPath) {
-        // This is a rename (already handled above)
+        // This is a rename (already handled above in 'renamed' case)
         continue;
       } else {
         // File deleted
@@ -130,35 +131,26 @@ async function identifyFileChanges(
 }
 ```
 
-### Step 2: Find Inode in History
+### Step 2: Find Inode
 
 ```typescript
-function findInodeInHistory(inodeId: string): FileEntry | null {
-  // Search through all versions
-  for (const version of this.manifest.versionHistory) {
-    for (const [path, fileState] of Object.entries(version.fileStates)) {
-      const fileEntry = this.manifest.fileMap[path];
-      
-      if (fileEntry && fileEntry.inodeId === inodeId) {
-        return {
-          ...fileEntry,
-          path  // Return path from that version
-        };
-      }
-    }
-  }
-  
-  return null;
-}
-
-function findInodeInCurrent(inodeId: string): string | null {
-  // Search in current fileMap
-  for (const [path, fileEntry] of Object.entries(this.manifest.fileMap)) {
+function findInodeInHeadVersion(inodeId: string, headFiles: Map<string, FileEntry>): string | null {
+  // Search in HEAD version only
+  for (const [path, fileEntry] of headFiles) {
     if (fileEntry.inodeId === inodeId) {
       return path;
     }
   }
-  
+  return null;
+}
+
+function findInodeInCurrent(inodeId: string, currentFiles: Map<string, FileEntry>): string | null {
+  // Search in current fileMap
+  for (const [path, fileEntry] of currentFiles) {
+    if (fileEntry.inodeId === inodeId) {
+      return path;
+    }
+  }
   return null;
 }
 ```
@@ -585,8 +577,8 @@ class FileManager {
         const fileEntry = this.manifest.fileMap[path];
         const inodeId = fileEntry?.inodeId;
         
-        // Szukaj tego inodeId w historii
-        const existingPath = this.findInodeInHistory(inodeId);
+        // Szukaj tego inodeId w HEAD
+        const existingPath = this.findInodeInHeadVersion(inodeId, headVersion.fileStates);
         
         if (existingPath) {
           // To jest rename!
@@ -628,38 +620,16 @@ class FileManager {
     return versionId;
   }
   
-  private findInodeInHistory(inodeId: string): string | null {
-    // Szukaj w wszystkich wersjach
-    for (const version of this.manifest.versionHistory) {
-      for (const [path, fileState] of Object.entries(version.fileStates)) {
-        const fileEntry = this.manifest.fileMap[path];
-        if (fileEntry?.inodeId === inodeId) {
-          return path;
-        }
+  private findInodeInHeadVersion(inodeId: string, headFileStates: Map<string, FileState>): string | null {
+    // Szukaj w HEAD
+    for (const [path, fileState] of Object.entries(headFileStates)) {
+      if (fileState.inodeId === inodeId) {
+        return path;
       }
     }
     return null;
   }
 }
-```
-
-**Przykład wykonania**:
-```typescript
-// v1: Utworzenie pliku
-await manager.addFile('src/index.js', 'console.log("Hello");');
-const v1 = await manager.saveCheckpoint('Add index.js');
-// manifest.fileMap['src/index.js'] = { inodeId: 'abc123', ... }
-
-// v2: Rename
-await manager.moveFile('src/index.js', 'src/main.js');
-const v2 = await manager.saveCheckpoint('Rename to main.js');
-// 1. Wykryto: 'src/main.js' nie istnieje w v1, ale inodeId 'abc123' istnieje
-// 2. Zidentyfikowano jako rename: 'src/index.js' → 'src/main.js'
-// 3. Zapisano w renameLog:
-//    { inodeId: 'abc123', fromPath: 'src/index.js', toPath: 'src/main.js', versionId: 'v2' }
-// 4. Zaktualizowano fileMap:
-//    - Usunięto: fileMap['src/index.js']
-//    - Dodano: fileMap['src/main.js'] = { inodeId: 'abc123', path: 'src/main.js', ... }
 ```
 
 ---

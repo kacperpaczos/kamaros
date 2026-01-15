@@ -53,9 +53,9 @@ Czyli praktycznie: ZERO RISK
 
 ```
 .store/blobs/
+├── index.json                # Central Metadata Index (Opcja C)
 ├── a3f5e8d9c1b2e4f67890abcdef1234567890abcdef1234567890abcdef123456
 ├── 9d4c1e2b3a4f5e6d7c8b9a0f1e2d3c4b5a6f7e8d9c0b1a2f3e4d5c6b7a8f9e0
-├── f1e2d3c4b5a6f7e8d9c0b1a2f3e4d5c6b7a8f9e0d1c2b3a4f5e6d7c8b9a0f
 └── ...
 ```
 
@@ -64,7 +64,34 @@ Czyli praktycznie: ZERO RISK
 - No file extension
 - Flat structure (no subdirectories)
 
-**Dlaczego flat structure?**:
+### 3.2 Blob Index (`index.json`)
+
+Wybór projektowy (Opcja C): Używamy osobnego pliku indeksu do przechowywania metadanych blobów, aby nie obciążać głównego manifestu.
+
+**Struktura `index.json`**:
+```typescript
+interface BlobIndex {
+  [hash: string]: {
+    mimeType: string;       // np. "image/png"
+    originalName: string;   // np. "logo.png" (tylko nazwa, bez ścieżki)
+    size: number;           // bytes
+    addedAt: string;        // ISO timestamp
+    refCount: number;       // Liczba wersji używających tego bloba
+    tags?: string[];        // Opcjonalne tagi użytkownika
+  }
+}
+```
+
+**Zalety tego podejścia**:
+- ✅ **Separacja**: Główny `manifest.json` pozostaje lekki i szybki do parsowania.
+- ✅ **Querying**: Łatwe przeszukiwanie metadanych blobów (np. "pokaż wszystkie obrazy").
+- ✅ **Lazy Loading**: Indeks ładowany tylko wtedy, gdy potrzebne są metadane (np. w eksploratorze plików).
+
+**Zarządzanie współbieżnością**:
+- Indeks musi być aktualizowany atomowo razem z dodawaniem nowego bloba.
+- W środowisku wielowątkowym (np. workers) dostęp do indeksu musi być synchronizowany.
+
+### 3.3 Dlaczego flat structure?
 - ✅ Simple implementation
 - ✅ No path traversal issues
 - ✅ Easy to list and garbage collect

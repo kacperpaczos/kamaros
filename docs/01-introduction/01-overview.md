@@ -56,10 +56,15 @@ Biblioteka dostępna dla **TypeScript** i **Python** z **core w Rust**:
 Obsługa plików większych niż 500MB bez przepełnienia pamięci RAM poprzez strumieniowe przetwarzanie.
 
 ### Wielowątkowość
-Web Workers dla TS dla operacji wymagających dużych zasobów CPU - haszowanie, diffing, kompresja - interfejs użytkownika pozostaje responsywny. W Pythonnie pdobone technologie (jakie).
+- **TypeScript/JavaScript**: Wykorzystanie Web Workers (przeglądarka) oraz Worker Threads (Node.js) do przeniesienia operacji wymagających dużych zasobów CPU (haszowanie, diffing, kompresja) do osobnych wątków, dzięki czemu interfejs użytkownika pozostaje w pełni responsywny.
+- **Python**: Wykorzystanie modułu `multiprocessing` oraz natywnej wielowątkowości Rust Core. Dzięki zastosowaniu PyO3, krytyczne wydajnościowo operacje zwalniają blokadę GIL (Global Interpreter Lock), umożliwiając rzeczywistą równoległość obliczeń na wielu rdzeniach.
+- **Rust Core**: Równoległe przetwarzanie danych przy użyciu biblioteki Rayon oraz asynchroniczne operacje wejścia/wyjścia, co pozwala na optymalne wykorzystanie architektury wielordzeniowej przy minimalnym narzucie pamięciowym.
 
 ### Production Ready
-Kompletna obsługa błędów, walidacja danych, kompleksowy zestaw testów.
+- **Kompleksowa obsługa błędów**: Precyzyjna diagnostyka i obsługa wyjątków na wszystkich warstwach (Rust, TS, Python), zapewniająca stabilność nawet w sytuacjach krytycznych.
+- **Rygorystyczna walidacja**: Automatyczna weryfikacja schematu `manifest.json` oraz walidacja sum kontrolnych SHA-256 dla każdego blobu, gwarantująca 100% integralności danych.
+- **Zaawansowane testy**: Rozbudowany zestaw testów jednostkowych i integracyjnych (CI/CD) obejmujący różne systemy operacyjne oraz środowiska uruchomieniowe (Node.js, Browser, Python).
+- **Bezpieczeństwo zapisu**: Mechanizmy atomowych operacji na plikach zapobiegające uszkodzeniu archiwum w przypadku nagłego przerwania procesu.
 
 ## Architektura wysokiego poziomu
 

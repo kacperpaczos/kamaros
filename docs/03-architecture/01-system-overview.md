@@ -319,3 +319,9 @@ interface CompressionAdapter {
 - 🔮 CLI tools
 - 🔮 GUI explorer
 - 🔮 VS Code extension
+
+---
+
+## Zobacz też
+
+- [Diagramy Architektury](07-architecture-diagrams.md) - Wizualizacje Mermaid

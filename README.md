@@ -6,9 +6,11 @@
 
 ## 🚀 Biblioteka wielojęzyczna
 
-- **TypeScript/JavaScript** - Pierwszorzędne wsparcie
-- **Python** - Asyncio API przez PyO3
-- **Rust Core** - Wysokowydajny WASM engine
+| Paczka | Platforma | Opis |
+|--------|-----------|------|
+| `kamaros-corelib` | Rust/WASM | Wysokowydajny core engine |
+| `kamaros-ts` | npm | TypeScript/JavaScript bindings |
+| `kamaros-py` | PyPI | Python asyncio API (PyO3) |
 
 ## ✨ Kluczowe cechy
 

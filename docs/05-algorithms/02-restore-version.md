@@ -70,6 +70,7 @@ buildVersionPath(targetVersionId: string): string[] {
   }
   
   // Find path: current → target
+  // Result example: [HEAD, v(N-1), v(N-2), ..., target]
   const path = graph.findPath(currentId, targetVersionId);
   
   return path;
@@ -84,9 +85,11 @@ Restore to v2:
 Path: [v5, v4, v3, v2]
 
 Apply patches:
-  v5 content + patch(v5→v4) = v4 content
-  v4 content + patch(v4→v3) = v3 content
-  v3 content + patch(v3→v2) = v2 content
+  v5 content + patch(v5) = v4 content
+  v4 content + patch(v4) = v3 content
+  v3 content + patch(v3) = v2 content
+  
+  Note: Patch associated with v5 (created during v5 save) transforms v5 -> v4.
 ```
 
 **Complexity**: O(V) gdzie V = distance between versions
@@ -104,15 +107,43 @@ async reconstructTextFile(
   pathToTarget: string[]
 ): Promise<Uint8Array> {
   // Start with HEAD content
-  let content = await this.adapter.readFile(`content/${path}`);
+  // Note: If file doesn't exist in HEAD (was deleted later), 
+  // we might need to handle this case or it shouldn't happen 
+  // if we only reconstruct files present in target.
+  // Actually, if file is present in target but not in HEAD,
+  // we need to find the latest version where it existed to start applying patches,
+  // OR rely on snapshot fallback if gap is too large / complex.
+  // Standard Reverse Delta assumes continuity. If file deleted in v4,
+  // and we restore v2, we need v3 content to patch back to v2.
+  // But v3 doesn't have it.
+  // This implies that for deleted files, we might need a Snapshot or 
+  // special handling (Deleted files usually stop existing in /content/).
+  // For simplicty here: assume we have content or can recover it.
+  
+  let content: Uint8Array;
+  try {
+    content = await this.adapter.readFile(`content/${path}`);
+  } catch (e) {
+    // File not in HEAD (was deleted). 
+    // Ideally we should find nearest snapshot or full version.
+    // For now, let's assume we start from existing content.
+    throw new Error(`Cannot restore file ${path} deleted in HEAD without snapshot`);
+  }
+
   let text = new TextDecoder().decode(content);
   
   // Apply patches backwards
+  // pathToTarget = [v5, v4, v3, v2]
+  // Loop: 
+  // i=0: fromVersion=v5, toVersion=v4. Load patch associated with v5.
+  // i=1: fromVersion=v4, toVersion=v3. Load patch associated with v4.
+  // ...
   for (let i = 0; i < pathToTarget.length - 1; i++) {
     const fromVersion = pathToTarget[i];
     const toVersion = pathToTarget[i + 1];
     
-    // Load reverse patch: from → to
+    // Load reverse patch associated with 'fromVersion'
+    // This patch was created when 'fromVersion' was saved, to go back to parent ('toVersion')
     const patchPath = `.store/deltas/${fromVersion}_${hashPath(path)}.patch`;
     
     try {
@@ -190,10 +221,17 @@ async updateWorkingCopy(
     const fileState = targetVersion.fileStates.get(path)!;
     
     if (fileState.deleted) {
-      continue; // Will delete in next step
+      continue; // File is deleted in target version, do not restore
     }
     
     const fileEntry = this.manifest.fileMap.get(path);
+    // Note: fileEntry in manifest reflects HEAD state (usually).
+    // We should rely on fileState from targetVersion to know type if possible,
+    // or look up type from history/manifest if immutable.
+    // Assuming type doesn't change or we track it in fileState.
+    // If not in fileState, we fallback to manifest (might be risky if type changed).
+    // Better: store type in FileState or assume manifest has current info 
+    // and we handle type changes via renames/replacements.
     
     if (fileEntry?.type === 'text') {
       const content = await this.reconstructTextFile(
@@ -220,6 +258,7 @@ async deleteRemovedFiles(targetVersion: Version): Promise<void> {
   const currentFiles = await this.listWorkingCopyFiles();
   
   // Get files that should exist in target
+  // A file exists in target if it is present in fileStates AND NOT marked as deleted
   const targetFiles = new Set(
     Array.from(targetVersion.fileStates.entries())
       .filter(([_, state]) => !state.deleted)
@@ -256,8 +295,10 @@ updateManifestAfterRestore(versionId: string): void {
   const version = this.getVersion(versionId)!;
   for (const [path, fileState] of version.fileStates) {
     const fileEntry = this.manifest.fileMap.get(path);
-    if (fileEntry && fileState.hash) {
-      fileEntry.currentHash = fileState.hash;
+    if (fileEntry && !fileState.deleted) {
+      if (fileState.hash) {
+        fileEntry.currentHash = fileState.hash;
+      }
       fileEntry.modified = version.timestamp;
     }
   }
@@ -509,5 +550,3 @@ flowchart TD
 ---
 
 [← Back: Save Checkpoint](01-save-checkpoint.md) | [Next: Diff Generation →](03-diff-generation.md)
-
-

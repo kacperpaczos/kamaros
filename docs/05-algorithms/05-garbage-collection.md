@@ -38,6 +38,8 @@ POSTCONDITION:
 
 **Purpose**: Zbierz wszystkie hashe blobów i ścieżki delt, które są używane przez jakąkolwiek wersję.
 
+Dla **delt**: Jeśli wersja `vN` istnieje i ma parenta `v(N-1)`, to patch `vN_{filehash}.patch` jest POTRZEBNY do przywrócenia `v(N-1)` (Reverse Delta). Więc każda wersja (oprócz najstarszej) implikuje istnienie patchy, które pozwalają z niej "wyjść" w dół.
+
 ```typescript
 async function markUsedResources(manifest: Manifest): Promise<{
   usedBlobs: Set<string>;
@@ -59,22 +61,29 @@ async function markUsedResources(manifest: Manifest): Promise<{
         usedBlobs.add(fileState.hash);
       }
       
-      // Mark delta if text file with contentRef
+      // Mark delta if text file
+      // In Reverse Delta, a text file in version 'vN' might explicitly reference a contentRef
+      // OR implicitely rely on a patch named 'vN_...patch' to go to parent.
+      // If we use explicit contentRef in FileState:
       if (fileState.contentRef && fileState.contentRef.startsWith('.store/deltas/')) {
         usedDeltas.add(fileState.contentRef);
       }
+      
+      // Implicit check (safety fallback if contentRef is not strictly used):
+      // If this version has a parent, it likely created a patch to go back to it.
+      // But only if the file existed in parent and was changed.
+      // Generally, relying on explicit contentRef in version object is safer if implemented correctly.
+      // If not, we might need to scan .store/deltas/ and check if filename matches any {version.id}_{hashPath(filePath)}.patch
     }
   }
   
   // Also mark blobs/deltas referenced in current HEAD (content/)
-  const headFiles = await this.listWorkingCopyFiles();
-  for (const filePath of headFiles) {
-    const fileEntry = manifest.fileMap[filePath];
-    
-    if (fileEntry.type === 'binary' && fileEntry.currentHash) {
-      usedBlobs.add(fileEntry.currentHash);
-    }
-  }
+  // HEAD files are in /content/, so they don't use blobs directly unless deduplicated?
+  // Actually, HEAD state is fully represented in /content/, but it matches the last version in history.
+  // The last version in history is already processed above.
+  
+  // If we have Snapshots (in .store/snapshots/), we should mark them too.
+  // Assuming snapshots are tracked or we iterate them.
   
   console.log(`Marked ${usedBlobs.size} used blobs`);
   console.log(`Marked ${usedDeltas.size} used deltas`);
@@ -100,14 +109,14 @@ const manifest = {
     {
       id: 'v2',
       fileStates: {
-        'src/index.js': { hash: 'abc123', inodeId: 'inode1' },  // Ten sam hash!
+        'src/index.js': { hash: 'abc123', inodeId: 'inode1', contentRef: '.store/deltas/v2_hash.patch' }, 
         'assets/logo.png': { hash: 'ghi789', inodeId: 'inode2' }  // Nowy hash
       }
     },
     {
       id: 'v3',
       fileStates: {
-        'src/index.js': { hash: 'abc123', inodeId: 'inode1' },
+        'src/index.js': { hash: 'abc123', inodeId: 'inode1', contentRef: '.store/deltas/v3_hash.patch' },
         'assets/logo.png': { hash: 'def456', inodeId: 'inode2' }  // Wrócono do starego
       }
     }
