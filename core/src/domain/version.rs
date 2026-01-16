@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Version {
     pub id: String,
     
@@ -16,7 +16,7 @@ pub struct Version {
     pub file_states: HashMap<String, FileState>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileState {
     #[serde(rename = "inodeId")]
     pub inode_id: String,

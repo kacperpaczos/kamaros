@@ -13,3 +13,9 @@ serde_json = "1.0"
 thiserror = "1.0"
 sha2 = "0.10"
 uuid = { version = "1.0", features = ["v4", "serde"] }
+similar = "2.6"
+async-trait = "0.1"
+zip = "2.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
