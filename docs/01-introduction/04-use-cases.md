@@ -1,37 +1,26 @@
-# Use Cases
+# Zastosowania systemu
 
-> **Przykłady zastosowań Kamaros**
-
-[← Back: Key Concepts](03-key-concepts.md) | [Next: Core Concepts →](../02-core-concepts/01-jcf-format.md)
-
----
-
-## 1. Code Editors (VSCode-like)
+## Edytory kodu (VSCode-like)
 - Online IDE z historią zmian
 - Offline-first editing
 - Fast restore to any point
 
-## 2. Design Tools (Figma-like)
+## Narzędzia graficzne (Figma-like)
 - Layer versioning
 - Asset deduplication (icons, images)
-- Branch designs (future)
+- Branch designs (przyszłość)
 
-## 3. Game Editors (Unity-like)
+## Edytory gier (Unity-like)
 - Scene versioning
 - Texture/model deduplication
 - Collaborative editing (with sync layer)
 
-## 4. Document Editors (Google Docs-like)
+## Edytory dokumentów (Google Docs-like)
 - Document history
 - Binary embedding (images)
 - Offline editing
 
-## 5. CAD/3D Modeling Tools
+## Narzędzia CAD/modelowania 3D
 - Model versioning
 - Material library (deduped)
 - Large file support (streaming)
-
----
-
-[← Back: Key Concepts](03-key-concepts.md) | [Next: Core Concepts →](../02-core-concepts/01-jcf-format.md)
-

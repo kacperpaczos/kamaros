@@ -1,31 +1,19 @@
-# 📚 API Reference: JCFManager
+# API Reference: JCFManager
 
-## 1. Przegląd
+## Przegląd
 
-`JCFManager` to główna klasa biblioteki JCF, zapewniająca interfejs do wszystkich operacji na plikach projektowych z wersjonowaniem.
+`JCFManager` to główna klasa biblioteki wielojęzycznej JCF (JSON Content Format), zapewniająca interfejs do wszystkich operacji na plikach projektowych z wersjonowaniem. API dostępne dla **TypeScript/JavaScript** i **Python** z wysokowydajnym core w **Rust**.
 
-## 2. Import i Inicjalizacja
-
-### 2.1 Import
-
-```typescript
-// ES Modules
-import { JCFManager, BrowserAdapter, NodeAdapter } from 'jcf-manager';
-
-// CommonJS
-const { JCFManager, BrowserAdapter } = require('jcf-manager');
-```
-
-### 2.2 Konstruktor
+## Konstruktor
 
 ```typescript
 constructor(config?: JCFConfig)
 ```
 
-**Parametry**:
+### Parametry
 - `config` (opcjonalny): Konfiguracja managera
 
-**Przykład**:
+### Przykład
 ```typescript
 const manager = new JCFManager({
   author: 'Jan Kowalski',
@@ -34,898 +22,925 @@ const manager = new JCFManager({
 });
 ```
 
-### 2.3 Konfiguracja
+## Konfiguracja i opcje
+
+### JCFConfig
+
+Główna konfiguracja managera:
 
 ```typescript
 interface JCFConfig {
-  /**
-   * Domyślny autor commitów
-   */
-  author?: string;
-  
-  /**
-   * Email autora
-   */
-  email?: string;
-  
-  /**
-   * Poziom kompresji (0-9)
-   * 0 = STORE (bez kompresji)
-   * 9 = MAX (najlepsza kompresja)
-   * Default: 6
-   */
-  compressionLevel?: number;
-  
-  /**
-   * Automatyczny garbage collection po każdym N commitów
-   * Default: false
-   */
-  autoGC?: boolean;
-  
-  /**
-   * Interwał snapshotów (co ile wersji tworzyć pełny snapshot)
-   * Default: 50
-   */
-  snapshotInterval?: number;
-  
-  /**
-   * Maksymalny rozmiar pliku (bytes)
-   * Default: 500MB w przeglądarce, unlimited w Node.js
-   */
-  maxFileSize?: number;
-  
-  /**
-   * Czy używać Web Workers
-   * Default: true (jeśli dostępne)
-   */
-  useWorkers?: boolean;
-  
-  /**
-   * Liczba workerów
-   * Default: navigator.hardwareConcurrency || 4
-   */
-  workerCount?: number;
+  // === Autor i tożsamość ===
+  author?: string;           // Domyślny autor commitów
+  email?: string;            // Email autora
+
+  // === Wydajność i kompresja ===
+  compressionLevel?: number; // Poziom kompresji ZIP (0-9, domyślnie 6)
+  useWorkers?: boolean;      // Używaj Web Workers (domyślnie auto-detect)
+  workerCount?: number;      // Liczba workerów (domyślnie hardwareConcurrency)
+  operationTimeout?: number; // Timeout operacji w ms (domyślnie 30000)
+
+  // === Zarządzanie pamięcią ===
+  maxFileSize?: number;      // Max rozmiar pojedynczego pliku (bytes)
+  maxHistorySize?: number;   // Max rozmiar historii (MB)
+  snapshotInterval?: number; // Co ile commitów robić pełny snapshot
+
+  // === Automatyzacja ===
+  autoGC?: boolean;          // Automatyczne GC po commit (domyślnie false)
+  autoBackup?: boolean;      // Automatyczne backup przed destruktywnymi operacjami
+
+  // === Bezpieczeństwo ===
+  validateOnLoad?: boolean;  // Walidacja przy ładowaniu (domyślnie true)
+  validateOnSave?: boolean;  // Walidacja przy zapisie (domyślnie true)
+
+  // === Debugowanie ===
+  debug?: boolean;           // Włącz logowanie debug
+  verbose?: boolean;         // Szczegółowe komunikaty
+
+  // === Custom ===
+  metadata?: Record<string, unknown>; // Dodatkowe metadane projektu
 }
 ```
 
-## 3. Metody Główne
-
-### 3.1 init()
-
-Inicjalizuje managera z adapterem systemu plików.
+### Przykład konfiguracji
 
 ```typescript
-async init(
-  adapter: FileSystemAdapter,
-  source?: Uint8Array | ReadableStream
-): Promise<void>
+const manager = new JCFManager({
+  // Podstawowa konfiguracja
+  author: 'Jan Kowalski',
+  email: 'jan@example.com',
+
+  // Optymalizacja wydajności
+  compressionLevel: 9,    // Maksymalna kompresja
+  useWorkers: true,       // Włącz Web Workers
+  workerCount: 4,         // 4 workery
+
+  // Zarządzanie pamięcią
+  maxFileSize: 500 * 1024 * 1024, // 500MB max
+  maxHistorySize: 100,            // 100MB historii
+
+  // Automatyzacja
+  autoGC: true,           // GC po każdym commicie
+  autoBackup: true,       // Backup przed restore
+
+  // Debug
+  debug: process.env.NODE_ENV === 'development'
+});
 ```
 
-**Parametry**:
-- `adapter`: Adapter dla platformy (BrowserAdapter, NodeAdapter, TauriAdapter)
-- `source` (opcjonalny): Istniejący plik JCF do otwarcia
+### Runtime Configuration
 
-**Przykład**:
+Konfigurację można zmieniać w runtime:
+
 ```typescript
-// Nowy projekt
-const manager = new JCFManager();
-await manager.init(new BrowserAdapter());
+// Pobierz aktualną konfigurację
+const config = manager.getConfig();
 
-// Otwarcie istniejącego
-const fileData = await loadFile('project.jcf');
-await manager.init(new NodeAdapter(), fileData);
+// Aktualizuj konfigurację
+manager.updateConfig({
+  compressionLevel: 9,
+  autoGC: true
+});
+
+// Resetuj do domyślnych
+manager.resetConfig();
 ```
 
-**Throws**:
-- `AdapterInitError`: Jeśli inicjalizacja adaptera się nie powiodła
-- `InvalidJCFError`: Jeśli source nie jest prawidłowym plikiem JCF
+### Environment Variables
 
----
+Konfiguracja może być również ustawiana przez zmienne środowiskowe:
 
-### 3.2 addFile()
+```bash
+# Autor
+export JCF_AUTHOR="Jan Kowalski"
+export JCF_EMAIL="jan@example.com"
 
+# Wydajność
+export JCF_COMPRESSION_LEVEL=9
+export JCF_USE_WORKERS=true
+export JCF_WORKER_COUNT=4
+
+# Pamięć
+export JCF_MAX_FILE_SIZE=524288000  # 500MB
+export JCF_MAX_HISTORY_SIZE=100     # 100MB
+
+# Debug
+export JCF_DEBUG=true
+export JCF_VERBOSE=true
+```
+
+Zmienne środowiskowe mają niższy priorytet niż konfiguracja przekazana programistycznie.
+
+## Metody główne
+
+### init(adapter: FileSystemAdapter, options?: InitOptions)
+Inicjalizuje manager z adapterem systemu plików.
+
+```typescript
+await manager.init(new BrowserAdapter(), {
+  createIfMissing: true,
+  validateOnLoad: true
+});
+```
+
+**Parametry:**
+- `adapter`: Adapter systemu plików
+- `options.createIfMissing`: Czy utworzyć nowy projekt jeśli nie istnieje (domyślnie: `true`)
+- `options.validateOnLoad`: Czy walidować integralność przy ładowaniu (domyślnie: `true`)
+
+**Zwraca**: `Promise<void>`
+
+### saveCheckpoint(message: string, options?: CheckpointOptions)
+Tworzy nowy checkpoint z bieżącymi zmianami.
+
+```typescript
+// Prosty checkpoint
+const versionId = await manager.saveCheckpoint('Add login feature');
+
+// Checkpoint z metadanymi
+const versionId = await manager.saveCheckpoint('Release v1.0', {
+  author: 'Jan Kowalski',
+  email: 'jan@example.com',
+  tags: ['release', 'v1.0']
+});
+```
+
+**Parametry:**
+- `message`: Wiadomość opisująca zmiany
+- `options.author`: Autor checkpoint (nadpisuje domyślnego)
+- `options.email`: Email autora
+- `options.tags`: Tagi dla tej wersji
+- `options.metadata`: Dodatkowe metadane
+
+**Zwraca**: `Promise<string>` - ID nowej wersji
+
+### restoreVersion(versionId: string, options?: RestoreOptions)
+Przywraca projekt do wskazanej wersji.
+
+```typescript
+// Przywracanie do konkretnej wersji
+await manager.restoreVersion('abc123def456');
+
+// Przywracanie z opcjami
+await manager.restoreVersion('v1.0', {
+  createBackup: true,
+  preserveStaged: false
+});
+```
+
+**Parametry:**
+- `versionId`: ID wersji do przywrócenia
+- `options.createBackup`: Czy utworzyć backup obecnego stanu
+- `options.preserveStaged`: Czy zachować pliki w staging area
+
+**Zwraca**: `Promise<void>`
+
+### addFile(path: string, content: Uint8Array | string, options?: AddFileOptions)
 Dodaje lub aktualizuje plik w projekcie.
 
 ```typescript
-async addFile(
-  path: string,
-  content: string | Uint8Array | Blob | ReadableStream,
-  metadata?: FileMetadata
-): Promise<void>
+// Dodanie pliku tekstowego
+await manager.addFile('src/index.js', 'console.log("Hello");');
+
+// Dodanie pliku binarnego
+const imageData = await fetch('/logo.png').then(r => r.arrayBuffer());
+await manager.addFile('assets/logo.png', new Uint8Array(imageData));
+
+// Dodanie z opcjami
+await manager.addFile('config.json', JSON.stringify(config), {
+  encoding: 'utf-8',
+  mimeType: 'application/json'
+});
 ```
 
-**Parametry**:
-- `path`: Ścieżka relatywna (Unix-style, np. `src/index.js`)
-- `content`: Zawartość pliku
-  - `string`: Tekst (automatycznie wykryty jako text)
-  - `Uint8Array`: Binarny
-  - `Blob`: Browser File/Blob
-  - `ReadableStream`: Dla dużych plików
-- `metadata` (opcjonalny): Dodatkowe metadane
+**Parametry:**
+- `path`: Ścieżka pliku
+- `content`: Zawartość jako string lub Uint8Array
+- `options.encoding`: Kodowanie tekstu (domyślnie auto-detect)
+- `options.mimeType`: MIME type pliku
+- `options.metadata`: Dodatkowe metadane
 
-**Przykład**:
+**Zwraca**: `Promise<void>`
+
+### removeFile(path: string, options?: RemoveOptions)
+Usuwa plik z projektu.
+
 ```typescript
-// Text file
-await manager.addFile('README.md', '# My Project');
+// Proste usunięcie
+await manager.removeFile('old-file.js');
 
-// Binary file
-await manager.addFile('logo.png', pngData);
-
-// From File input
-const file = fileInput.files[0];
-await manager.addFile(`assets/${file.name}`, file);
-
-// Streaming large file
-const stream = getLargeFileStream();
-await manager.addFile('video.mp4', stream);
+// Usunięcie z opcjami
+await manager.removeFile('temp/cache.dat', {
+  force: true,
+  recursive: false
+});
 ```
 
-**Throws**:
-- `InvalidPathError`: Jeśli ścieżka zawiera nieprawidłowe znaki
-- `FileTooLargeError`: Jeśli plik przekracza `maxFileSize`
+**Parametry:**
+- `path`: Ścieżka do usunięcia
+- `options.force`: Wymuś usunięcie nawet jeśli plik się zmienił
+- `options.recursive`: Usuń rekursywnie katalogi
 
----
+**Zwraca**: `Promise<void>`
 
-### 3.3 getFile()
-
-Pobiera zawartość pliku.
+### getFileContent(path: string, versionId?: string)
+Pobiera zawartość pliku z wskazanej wersji (domyślnie HEAD).
 
 ```typescript
-async getFile(
-  path: string,
-  versionId?: string
-): Promise<Uint8Array>
+// Zawartość z HEAD
+const content = await manager.getFileContent('src/index.js');
+
+// Zawartość z konkretnej wersji
+const oldContent = await manager.getFileContent('src/index.js', 'abc123');
 ```
 
-**Parametry**:
-- `path`: Ścieżka do pliku
-- `versionId` (opcjonalny): ID wersji (domyślnie: HEAD)
+**Parametry:**
+- `path`: Ścieżka pliku
+- `versionId`: ID wersji (opcjonalne, domyślnie HEAD)
 
-**Przykład**:
+**Zwraca**: `Promise<Uint8Array>` - Zawartość pliku jako bajty
+
+### getFileInfo(path: string, versionId?: string)
+Pobiera informacje o pliku.
+
 ```typescript
-// Bieżąca wersja
-const content = await manager.getFile('src/index.js');
-const text = new TextDecoder().decode(content);
-
-// Konkretna wersja
-const oldContent = await manager.getFile('src/index.js', 'v1');
+const info = await manager.getFileInfo('src/index.js');
+// {
+//   path: 'src/index.js',
+//   size: 1024,
+//   type: 'text',
+//   hash: 'abc123...',
+//   modified: new Date('2025-01-01'),
+//   encoding: 'utf-8',
+//   mime: 'application/javascript'
+// }
 ```
 
-**Throws**:
-- `FileNotFoundError`: Jeśli plik nie istnieje
-- `VersionNotFoundError`: Jeśli wersja nie istnieje
+**Parametry:**
+- `path`: Ścieżka pliku
+- `versionId`: ID wersji (opcjonalne)
 
----
+**Zwraca**: `Promise<FileInfo>`
 
-### 3.4 getFileStream()
-
-Pobiera zawartość pliku jako stream (dla dużych plików).
+### listFiles(directory?: string, options?: ListOptions)
+Lista plików w katalogu.
 
 ```typescript
-getFileStream(
-  path: string,
-  versionId?: string
-): ReadableStream
+// Wszystkie pliki w katalogu
+const files = await manager.listFiles('src/');
+
+// Szczegółowa lista
+const detailedFiles = await manager.listFiles('', {
+  recursive: true,
+  includeMetadata: true,
+  type: 'text' // tylko pliki tekstowe
+});
 ```
 
-**Parametry**:
-- `path`: Ścieżka do pliku
-- `versionId` (opcjonalny): ID wersji
+**Parametry:**
+- `directory`: Katalog do przeszukania (domyślnie root)
+- `options.recursive`: Przeszukiwanie rekursywne
+- `options.includeMetadata`: Dołącz metadane
+- `options.type`: Filtrowanie po typie ('text' | 'binary')
+- `options.pattern`: Wzorzec glob do filtrowania
 
-**Przykład**:
+**Zwraca**: `Promise<FileInfo[]>` - Lista plików z informacjami
+
+## Metody zarządzania wersjami
+
+### getCurrentVersion()
+Pobiera ID bieżącej wersji (HEAD).
+
 ```typescript
-// Stream large file
-const stream = manager.getFileStream('video.mp4');
+const headId = await manager.getCurrentVersion();
+console.log('Current HEAD:', headId);
+```
 
-// Pipe to download
+**Zwraca**: `Promise<string>` - ID wersji HEAD
+
+### getHistory(options?: HistoryOptions)
+Pobiera historię wersji.
+
+```typescript
+// Wszystkie wersje
+const history = await manager.getHistory();
+
+// Ograniczona historia
+const recent = await manager.getHistory({
+  limit: 10,
+  since: '2025-01-01',
+  author: 'Jan Kowalski'
+});
+
+// Historia z szczególamu
+const detailed = await manager.getHistory({
+  includeFileChanges: true,
+  includeStats: true
+});
+```
+
+**Parametry:**
+- `options.limit`: Maksymalna liczba wersji
+- `options.since`: Tylko wersje od daty (ISO 8601)
+- `options.until`: Tylko wersje do daty
+- `options.author`: Filtrowanie po autorze
+- `options.includeFileChanges`: Dołącz informacje o zmienionych plikach
+- `options.includeStats`: Dołącz statystyki
+
+**Zwraca**: `Promise<Version[]>` - Lista wersji od najnowszej
+
+### getVersion(versionId: string)
+Pobiera szczegóły konkretnej wersji.
+
+```typescript
+const version = await manager.getVersion('abc123def456');
+if (version) {
+  console.log(`Version ${version.id}: ${version.message}`);
+  console.log(`Author: ${version.author} at ${version.timestamp}`);
+}
+```
+
+**Parametry:**
+- `versionId`: ID wersji do pobrania
+
+**Zwraca**: `Promise<Version | null>` - Szczegóły wersji lub null jeśli nie istnieje
+
+### getVersionDiff(fromVersion: string, toVersion: string)
+Porównuje dwie wersje i zwraca różnice.
+
+```typescript
+const diff = await manager.getVersionDiff('v1.0', 'v1.1');
+console.log('Added files:', diff.added);
+console.log('Modified files:', diff.modified);
+console.log('Deleted files:', diff.deleted);
+```
+
+**Parametry:**
+- `fromVersion`: Bazowa wersja do porównania
+- `toVersion`: Docelowa wersja
+
+**Zwraca**: `Promise<VersionDiff>` - Różnice między wersjami
+
+### getFileHistory(path: string, options?: FileHistoryOptions)
+Pobiera historię zmian konkretnego pliku.
+
+```typescript
+const history = await manager.getFileHistory('src/index.js', {
+  limit: 20,
+  includeContent: false // tylko metadane, bez zawartości
+});
+
+history.forEach(entry => {
+  console.log(`${entry.timestamp}: ${entry.changeType} (${entry.size} bytes)`);
+});
+```
+
+**Parametry:**
+- `path`: Ścieżka pliku
+- `options.limit`: Maksymalna liczba wpisów
+- `options.includeContent`: Czy dołączyć zawartość plików
+- `options.includeDiff`: Czy dołączyć diff zmian
+
+**Zwraca**: `Promise<FileHistoryEntry[]>` - Historia zmian pliku
+
+## Metody narzędziowe
+
+### getStats()
+Pobiera statystyki projektu.
+
+```typescript
+const stats = await manager.getStats();
+console.log(`Project has ${stats.totalVersions} versions`);
+console.log(`Total size: ${stats.totalSize} bytes`);
+console.log(`Deduplication ratio: ${stats.deduplicationRatio}x`);
+```
+
+**Zwraca**: `Promise<ProjectStats>` - Szczegółowe statystyki projektu
+
+### runGC(options?: GCOptions)
+Uruchamia garbage collection dla optymalizacji przestrzeni.
+
+```typescript
+// Standardowe GC
+const report = await manager.runGC();
+
+// GC z opcjami
+const report = await manager.runGC({
+  gracePeriodDays: 7, // nie usuwaj plików młodszych niż 7 dni
+  showProgress: true,
+  onProgress: (progress) => {
+    console.log(`GC: ${progress.percent}% (${progress.phase})`);
+  }
+});
+
+console.log(`Freed ${report.spaceFreed} bytes`);
+```
+
+**Parametry:**
+- `options.gracePeriodDays`: Okres karencji dla nowych plików
+- `options.showProgress`: Wyświetlaj postęp
+- `options.onProgress`: Callback dla aktualizacji postępu
+
+**Zwraca**: `Promise<GCReport>` - Raport z wyników czyszczenia
+
+### verifyIntegrity(options?: VerifyOptions)
+Sprawdza integralność danych projektu.
+
+```typescript
+const report = await manager.verifyIntegrity({
+  checkBlobs: true,
+  checkManifest: true,
+  repair: false, // tylko sprawdź, nie naprawiaj
+  onProgress: (progress) => console.log(`Verify: ${progress.percent}%`)
+});
+
+if (report.valid) {
+  console.log('Project integrity OK');
+} else {
+  console.log('Found errors:', report.errors);
+}
+```
+
+**Parametry:**
+- `options.checkBlobs`: Sprawdź integralność blobów
+- `options.checkManifest`: Sprawdź manifest
+- `options.repair`: Automatycznie napraw wykryte błędy
+- `options.onProgress`: Callback postępu
+
+**Zwraca**: `Promise<VerificationReport>` - Raport weryfikacji
+
+### export(options?: ExportOptions)
+Eksportuje projekt jako stream JCF.
+
+```typescript
+// Eksport całego projektu
+const stream = await manager.export();
+
+// Eksport konkretnej wersji
+const stream = await manager.export({
+  versionId: 'v1.0',
+  includeHistory: true,
+  compressionLevel: 9
+});
+
+// Zapisz do pliku
 const response = new Response(stream);
 const blob = await response.blob();
-saveAs(blob, 'video.mp4');
+// ... zapisz blob do pliku
 ```
 
----
+**Parametry:**
+- `options.versionId`: Wersja do eksportu (domyślnie HEAD)
+- `options.includeHistory`: Czy dołączyć pełną historię
+- `options.compressionLevel`: Poziom kompresji (0-9)
+- `options.onProgress`: Callback postępu
 
-### 3.5 deleteFile()
+**Zwraca**: `Promise<ReadableStream>` - Stream z danymi JCF
 
-Usuwa plik z projektu (soft delete - zachowuje w historii).
+### import(source: ReadableStream | Uint8Array, options?: ImportOptions)
+Importuje projekt z streama lub danych JCF.
 
 ```typescript
-async deleteFile(path: string): Promise<void>
+// Import ze streama
+const response = await fetch('project.jcf');
+const stream = response.body;
+await manager.import(stream);
+
+// Import z ArrayBuffer
+const buffer = await file.arrayBuffer();
+await manager.import(new Uint8Array(buffer), {
+  validateOnImport: true,
+  mergeHistory: false // nadpisz istniejącą historię
+});
 ```
 
-**Parametry**:
-- `path`: Ścieżka do pliku
+**Parametry:**
+- `source`: Stream lub dane do importu
+- `options.validateOnImport`: Waliduj podczas importu
+- `options.mergeHistory`: Scal historię zamiast nadpisywać
+- `options.onProgress`: Callback postępu
 
-**Przykład**:
+**Zwraca**: `Promise<void>`
+
+### createBackup(name?: string)
+Tworzy backup bieżącego stanu projektu.
+
 ```typescript
-await manager.deleteFile('old-file.txt');
+const backupId = await manager.createBackup('before-refactor');
+console.log('Backup created:', backupId);
+
+// Lista backupów
+const backups = await manager.listBackups();
+
+// Przywróć z backup
+await manager.restoreFromBackup(backupId);
 ```
 
-**Uwaga**: Plik nie jest fizycznie usunięty do następnego GC. Jest tylko oznaczony jako deleted w manifeście.
+**Parametry:**
+- `name`: Opcjonalna nazwa backup
 
----
+**Zwraca**: `Promise<string>` - ID backup
 
-### 3.6 moveFile()
-
-Zmienia nazwę/przenosi plik (zachowuje historię).
+### cleanup(options?: CleanupOptions)
+Czyści tymczasowe pliki i optymalizuje projekt.
 
 ```typescript
-async moveFile(
-  oldPath: string,
-  newPath: string
-): Promise<void>
+await manager.cleanup({
+  removeTempFiles: true,
+  compactManifest: true,
+  rebuildIndexes: true
+});
 ```
 
-**Parametry**:
-- `oldPath`: Aktualna ścieżka
-- `newPath`: Nowa ścieżka
+**Parametry:**
+- `options.removeTempFiles`: Usuń pliki tymczasowe
+- `options.compactManifest`: Zoptymalizuj manifest
+- `options.rebuildIndexes`: Przebuduj indeksy
 
-**Przykład**:
+**Zwraca**: `Promise<void>`
+
+## System zdarzeń
+
+JCFManager emituje zdarzenia podczas operacji, umożliwiając monitorowanie postępu i reagowanie na zmiany.
+
+### Subskrypcja zdarzeń
+
 ```typescript
-// Rename
-await manager.moveFile('old-name.js', 'new-name.js');
+import { JCFManager, JCFEvent } from 'jcf-manager';
 
-// Move to different directory
-await manager.moveFile('file.js', 'src/file.js');
+const manager = new JCFManager();
+
+// Subskrypcja pojedynczego zdarzenia
+manager.on('checkpoint:complete', (event) => {
+  console.log('Checkpoint done:', event.versionId);
+});
+
+// Subskrypcja wielu zdarzeń
+manager.on(['checkpoint:start', 'checkpoint:complete'], (event) => {
+  console.log('Checkpoint event:', event.type);
+});
+
+// Jednorazowa subskrypcja
+manager.once('error', (event) => {
+  console.error('Error occurred:', event.error);
+});
+
+// Usunięcie subskrypcji
+const handler = (event) => console.log(event);
+manager.on('progress', handler);
+manager.off('progress', handler);
+
+// Usunięcie wszystkich handlerów dla zdarzenia
+manager.off('progress');
+
+// Usunięcie wszystkich subskrypcji
+manager.removeAllListeners();
 ```
 
-**Uwaga**: Operacja używa systemu inode, więc historia pliku jest zachowana po rename.
+### Zdarzenia operacyjne
 
----
-
-### 3.7 listFiles()
-
-Zwraca listę wszystkich plików w projekcie.
-
+#### Checkpoint Events
 ```typescript
-listFiles(versionId?: string): Promise<FileInfo[]>
+manager.on('checkpoint:start', (event: CheckpointStartEvent) => {
+  console.log('Starting checkpoint:', event.message);
+  // { type: 'checkpoint:start', message: string, timestamp: string }
+});
+
+manager.on('checkpoint:progress', (event: CheckpointProgressEvent) => {
+  console.log(`Progress: ${event.percent}% (${event.phase})`);
+  // { type: 'checkpoint:progress', percent: number, phase: string, current: number, total: number }
+});
+
+manager.on('checkpoint:complete', (event: CheckpointCompleteEvent) => {
+  console.log('Checkpoint created:', event.versionId);
+  // { type: 'checkpoint:complete', versionId: string, message: string, filesChanged: number }
+});
+
+manager.on('checkpoint:error', (event: CheckpointErrorEvent) => {
+  console.error('Checkpoint failed:', event.error);
+  // { type: 'checkpoint:error', error: Error, operation: string }
+});
 ```
 
-**Parametry**:
-- `versionId` (opcjonalny): ID wersji (domyślnie: HEAD)
-
-**Return**:
+#### Restore Events
 ```typescript
-interface FileInfo {
-  path: string;
-  type: 'text' | 'binary';
-  size: number;
-  hash?: string; // Dla binary
-  modified?: Date;
+manager.on('restore:start', (event: RestoreStartEvent) => {
+  console.log('Starting restore to:', event.versionId);
+});
+
+manager.on('restore:progress', (event: RestoreProgressEvent) => {
+  console.log(`Restore: ${event.percent}%`);
+});
+
+manager.on('restore:complete', (event: RestoreCompleteEvent) => {
+  console.log('Restore complete');
+});
+
+manager.on('restore:error', (event: RestoreErrorEvent) => {
+  console.error('Restore failed:', event.error);
+});
+```
+
+#### GC Events
+```typescript
+manager.on('gc:start', (event: GCStartEvent) => {
+  console.log('Starting garbage collection');
+});
+
+manager.on('gc:progress', (event: GCProgressEvent) => {
+  console.log(`GC: ${event.percent}% (${event.phase})`);
+});
+
+manager.on('gc:complete', (event: GCCompleteEvent) => {
+  console.log(`GC complete: ${event.spaceFreed} bytes freed`);
+});
+```
+
+#### File Operation Events
+```typescript
+manager.on('file:change', (event: FileChangeEvent) => {
+  console.log(`File ${event.changeType}: ${event.path}`);
+  // { type: 'file:change', path: string, changeType: 'added' | 'modified' | 'deleted' }
+});
+```
+
+#### General Events
+```typescript
+manager.on('progress', (event: ProgressEvent) => {
+  // Uniwersalne zdarzenie postępu dla wszystkich operacji
+  console.log(`${event.operation}: ${event.percent}%`);
+});
+
+manager.on('error', (event: ErrorEvent) => {
+  // Globalne zdarzenie błędu
+  console.error('Operation failed:', event.error);
+});
+```
+
+### Typy zdarzeń
+
+Wszystkie zdarzenia implementują wspólny interfejs:
+
+```typescript
+interface BaseEvent {
+  type: string;
+  timestamp: string;
 }
-```
 
-**Przykład**:
-```typescript
-const files = await manager.listFiles();
-
-for (const file of files) {
-  console.log(`${file.path} (${formatBytes(file.size)})`);
+interface CheckpointStartEvent extends BaseEvent {
+  type: 'checkpoint:start';
+  message: string;
 }
 
-// Filter text files
-const textFiles = files.filter(f => f.type === 'text');
+interface CheckpointProgressEvent extends BaseEvent {
+  type: 'checkpoint:progress';
+  percent: number;
+  phase: 'analyzing' | 'hashing' | 'saving' | 'updating';
+  current: number;
+  total: number;
+}
+
+// ... pozostałe typy zdarzeń
 ```
 
----
+## Typy
 
-## 4. Wersjonowanie
-
-### 4.1 saveCheckpoint()
-
-Tworzy nowy checkpoint (commit) z bieżącymi zmianami.
-
-```typescript
-async saveCheckpoint(
-  message: string,
-  author?: string
-): Promise<string>
-```
-
-**Parametry**:
-- `message`: Opis zmian
-- `author` (opcjonalny): Nadpisuje domyślnego autora
-
-**Return**: ID nowej wersji (UUID v4)
-
-**Przykład**:
-```typescript
-// Basic usage
-const versionId = await manager.saveCheckpoint('Add login feature');
-
-// Custom author
-const v2 = await manager.saveCheckpoint(
-  'Fix bug',
-  'Anna Kowalska <anna@example.com>'
-);
-
-console.log(`Saved as version: ${versionId}`);
-```
-
-**Throws**:
-- `NoChangesError`: Jeśli nie ma żadnych zmian do zapisania
-- `StorageError`: Jeśli zapis się nie powiódł
-
----
-
-### 4.2 restoreVersion()
-
-Przywraca projekt do określonej wersji (time travel).
-
-```typescript
-async restoreVersion(versionId: string): Promise<void>
-```
-
-**Parametry**:
-- `versionId`: ID wersji do przywrócenia
-
-**Przykład**:
-```typescript
-// Save current state
-const v1 = await manager.saveCheckpoint('Version 1');
-
-// Make changes
-await manager.addFile('new.txt', 'content');
-await manager.saveCheckpoint('Version 2');
-
-// Time travel back
-await manager.restoreVersion(v1);
-
-// Now we're back at v1 state
-const exists = await manager.fileExists('new.txt');
-console.log(exists); // false
-```
-
-**Throws**:
-- `VersionNotFoundError`: Jeśli wersja nie istnieje
-- `RestoreError`: Jeśli przywracanie się nie powiodło
-
-**Uwaga**: To jest destructive operation - bieżące niezapisane zmiany zostaną utracone!
-
----
-
-### 4.3 getVersionHistory()
-
-Zwraca pełną historię wersji.
-
-```typescript
-getVersionHistory(): Version[]
-```
-
-**Return**:
 ```typescript
 interface Version {
   id: string;
-  timestamp: string; // ISO 8601
+  timestamp: string;
   message: string;
   author: string;
   parentId: string | null;
-  fileStates: Record<string, FileState>;
-}
-```
-
-**Przykład**:
-```typescript
-const history = manager.getVersionHistory();
-
-for (const version of history) {
-  console.log(`${version.id}: ${version.message}`);
-  console.log(`  By ${version.author} at ${version.timestamp}`);
+  fileStates: Map<string, FileState>;
 }
 
-// Get latest 10 versions
-const recent = history.slice(-10).reverse();
-```
-
----
-
-### 4.4 getFileHistory()
-
-Zwraca historię zmian konkretnego pliku.
-
-```typescript
-async getFileHistory(filePath: string): Promise<FileHistoryEntry[]>
-```
-
-**Parametry**:
-- `filePath`: Ścieżka do pliku
-
-**Return**:
-```typescript
-interface FileHistoryEntry {
-  versionId: string;
-  timestamp: string;
-  message: string;
-  author: string;
-  changeType: 'added' | 'modified' | 'deleted' | 'renamed';
-  path: string; // Może się różnić jeśli był rename
-  size: number;
+interface FileState {
+  inodeId: string;
+  hash?: string;
+  contentRef?: string;
+  deleted?: boolean;
 }
-```
 
-**Przykład**:
-```typescript
-const history = await manager.getFileHistory('src/index.js');
-
-console.log(`History of src/index.js:`);
-for (const entry of history) {
-  console.log(`  ${entry.versionId}: ${entry.changeType}`);
-  console.log(`    ${entry.message}`);
-  
-  if (entry.changeType === 'renamed') {
-    console.log(`    Path was: ${entry.path}`);
-  }
-}
-```
-
----
-
-### 4.5 compareVersions()
-
-Porównuje dwie wersje i zwraca diff.
-
-```typescript
-async compareVersions(
-  versionId1: string,
-  versionId2: string
-): Promise<VersionDiff>
-```
-
-**Return**:
-```typescript
-interface VersionDiff {
-  added: string[];      // Nowe pliki
-  modified: string[];   // Zmienione pliki
-  deleted: string[];    // Usunięte pliki
-  renamed: Array<{      // Zmiana nazwy
-    from: string;
-    to: string;
-  }>;
-}
-```
-
-**Przykład**:
-```typescript
-const diff = await manager.compareVersions('v1', 'v5');
-
-console.log(`Changes from v1 to v5:`);
-console.log(`  Added: ${diff.added.length} files`);
-console.log(`  Modified: ${diff.modified.length} files`);
-console.log(`  Deleted: ${diff.deleted.length} files`);
-
-// Show details
-for (const file of diff.modified) {
-  console.log(`  Modified: ${file}`);
-}
-```
-
----
-
-## 5. Maintenance
-
-### 5.1 runGC()
-
-Uruchamia garbage collection (usuwa nieużywane bloby).
-
-```typescript
-async runGC(options?: GCOptions): Promise<GCReport>
-```
-
-**Parametry**:
-```typescript
-interface GCOptions {
-  /**
-   * Okres grace (dni) - nie usuwa blobów młodszych niż X dni
-   */
-  gracePeriodDays?: number;
-  
-  /**
-   * Czy pokazywać progress
-   */
-  showProgress?: boolean;
-}
-```
-
-**Return**:
-```typescript
 interface GCReport {
   blobsRemoved: number;
-  deltasRemoved: number;
-  spaceFreed: number; // bytes
-  duration: number; // ms
+  spaceFreed: number;
 }
 ```
 
-**Przykład**:
-```typescript
-// Basic GC
-const report = await manager.runGC();
-console.log(`Freed ${formatBytes(report.spaceFreed)}`);
-console.log(`Removed ${report.blobsRemoved} blobs`);
+## Obsługa błędów
 
-// Safe GC with grace period
-const safeReport = await manager.runGC({
-  gracePeriodDays: 7
-});
-```
+JCFManager używa hierarchii błędów dziedziczących po `JCFError`. Wszystkie błędy zawierają kod, wiadomość i opcjonalne szczegóły.
 
-**Uwaga**: GC może być czasochłonne dla dużych projektów (>1000 wersji).
-
----
-
-### 5.2 verify()
-
-Weryfikuje integralność pliku JCF.
+### Hierarchia błędów
 
 ```typescript
-async verify(): Promise<VerificationReport>
-```
-
-**Return**:
-```typescript
-interface VerificationReport {
-  valid: boolean;
-  errors: VerificationError[];
-  warnings: VerificationWarning[];
-}
-
-interface VerificationError {
-  type: 'missing_blob' | 'corrupt_blob' | 'invalid_manifest' | 'broken_chain';
-  message: string;
-  details?: any;
-}
-```
-
-**Przykład**:
-```typescript
-const report = await manager.verify();
-
-if (!report.valid) {
-  console.error('⚠️  JCF file has errors:');
-  for (const error of report.errors) {
-    console.error(`  - ${error.type}: ${error.message}`);
-  }
-} else {
-  console.log('✅ JCF file is valid');
-}
-
-if (report.warnings.length > 0) {
-  console.warn('Warnings:');
-  for (const warning of report.warnings) {
-    console.warn(`  - ${warning.message}`);
+class JCFError extends Error {
+  constructor(message: string, public code: string, public details?: any) {
+    super(message);
+    this.name = 'JCFError';
   }
 }
-```
 
----
-
-### 5.3 getStats()
-
-Zwraca statystyki projektu.
-
-```typescript
-async getStats(): Promise<ProjectStats>
-```
-
-**Return**:
-```typescript
-interface ProjectStats {
-  // General
-  totalVersions: number;
-  totalFiles: number;
-  totalSize: number;
-  
-  // Storage breakdown
-  contentSize: number;
-  blobsSize: number;
-  deltasSize: number;
-  manifestSize: number;
-  
-  // Deduplication
-  uniqueBlobs: number;
-  blobReferences: number;
-  deduplicationRatio: number;
-  
-  // History
-  oldestVersion: {
-    id: string;
-    timestamp: string;
-  };
-  newestVersion: {
-    id: string;
-    timestamp: string;
-  };
-  
-  // Files
-  filesByType: {
-    text: number;
-    binary: number;
-  };
-  largestFile: {
-    path: string;
-    size: number;
-  };
-}
-```
-
-**Przykład**:
-```typescript
-const stats = await manager.getStats();
-
-console.log('📊 Project Statistics');
-console.log(`Total versions: ${stats.totalVersions}`);
-console.log(`Total files: ${stats.totalFiles}`);
-console.log(`Total size: ${formatBytes(stats.totalSize)}`);
-console.log(`Deduplication ratio: ${stats.deduplicationRatio.toFixed(2)}x`);
-console.log(`Space saved: ${formatBytes(stats.totalSize - stats.blobsSize)}`);
-```
-
----
-
-## 6. Export/Import
-
-### 6.1 export()
-
-Eksportuje projekt jako stream (do zapisu lub przesłania).
-
-```typescript
-async export(): Promise<ReadableStream>
-```
-
-**Przykład**:
-```typescript
-// Save to file (Browser)
-const stream = await manager.export();
-const response = new Response(stream);
-const blob = await response.blob();
-saveAs(blob, 'project.jcf');
-
-// Save to file (Node.js)
-const stream = await manager.export();
-const writeStream = createWriteStream('project.jcf');
-Readable.fromWeb(stream).pipe(writeStream);
-
-// Upload to server
-const stream = await manager.export();
-await fetch('/api/upload', {
-  method: 'POST',
-  body: stream,
-  headers: {
-    'Content-Type': 'application/x-jcf'
+// === Błędy walidacji ===
+class ValidationError extends JCFError {
+  constructor(message: string, public field?: string) {
+    super(message, 'VALIDATION_ERROR', { field });
+    this.name = 'ValidationError';
   }
-});
-```
-
----
-
-### 6.2 exportSnapshot()
-
-Eksportuje snapshot konkretnej wersji (bez historii).
-
-```typescript
-async exportSnapshot(
-  versionId?: string,
-  format?: 'zip' | 'tar'
-): Promise<ReadableStream>
-```
-
-**Parametry**:
-- `versionId` (opcjonalny): Wersja do eksportu (domyślnie: HEAD)
-- `format` (opcjonalny): Format archiwum (domyślnie: 'zip')
-
-**Przykład**:
-```typescript
-// Export current state as clean ZIP
-const snapshot = await manager.exportSnapshot();
-saveAs(await new Response(snapshot).blob(), 'project-snapshot.zip');
-
-// Export specific version
-const v1Snapshot = await manager.exportSnapshot('v1');
-```
-
-**Uwaga**: Snapshot nie zawiera historii - tylko pliki z określonej wersji.
-
----
-
-## 7. Events
-
-### 7.1 Obserwowanie Zmian
-
-```typescript
-manager.on('change', (event: ChangeEvent) => {
-  console.log(`File changed: ${event.path}`);
-});
-
-manager.on('checkpoint', (event: CheckpointEvent) => {
-  console.log(`Checkpoint created: ${event.versionId}`);
-});
-
-manager.on('restore', (event: RestoreEvent) => {
-  console.log(`Restored to: ${event.versionId}`);
-});
-
-manager.on('error', (error: Error) => {
-  console.error('Error:', error);
-});
-```
-
-**Typy Eventów**:
-```typescript
-interface ChangeEvent {
-  path: string;
-  type: 'added' | 'modified' | 'deleted';
-  timestamp: string;
 }
 
-interface CheckpointEvent {
-  versionId: string;
-  message: string;
-  filesChanged: number;
-  timestamp: string;
+// === Błędy systemu plików ===
+class FileNotFoundError extends JCFError {
+  constructor(path: string, public versionId?: string) {
+    super(
+      `File not found: ${path}${versionId ? ` in version ${versionId}` : ''}`,
+      'FILE_NOT_FOUND',
+      { path, versionId }
+    );
+    this.name = 'FileNotFoundError';
+  }
 }
 
-interface RestoreEvent {
-  versionId: string;
-  previousVersionId: string;
-  timestamp: string;
+class FileExistsError extends JCFError {
+  constructor(path: string) {
+    super(`File already exists: ${path}`, 'FILE_EXISTS', { path });
+    this.name = 'FileExistsError';
+  }
+}
+
+class StorageError extends JCFError {
+  constructor(message: string, public originalError?: Error) {
+    super(message, 'STORAGE_ERROR', { originalError });
+    this.name = 'StorageError';
+  }
+}
+
+// === Błędy wersjonowania ===
+class VersionNotFoundError extends JCFError {
+  constructor(versionId: string) {
+    super(`Version not found: ${versionId}`, 'VERSION_NOT_FOUND', { versionId });
+    this.name = 'VersionNotFoundError';
+  }
+}
+
+class VersionConflictError extends JCFError {
+  constructor(message: string, public localVersion: string, public remoteVersion: string) {
+    super(message, 'VERSION_CONFLICT', { localVersion, remoteVersion });
+    this.name = 'VersionConflictError';
+  }
+}
+
+// === Błędy integralności ===
+class CorruptionError extends JCFError {
+  constructor(message: string, public corruptedItem: string) {
+    super(`Data corruption: ${message}`, 'CORRUPTION_ERROR', { corruptedItem });
+    this.name = 'CorruptionError';
+  }
+}
+
+class ManifestCorruptionError extends CorruptionError {
+  constructor(details: string) {
+    super(`Manifest corruption: ${details}`, 'manifest');
+    this.name = 'ManifestCorruptionError';
+  }
+}
+
+class BlobCorruptionError extends CorruptionError {
+  constructor(hash: string, expectedHash?: string) {
+    super(
+      `Blob corruption: ${hash}${expectedHash ? ` (expected: ${expectedHash})` : ''}`,
+      `blob:${hash}`
+    );
+    this.name = 'BlobCorruptionError';
+  }
+}
+
+// === Błędy operacyjne ===
+class OperationTimeoutError extends JCFError {
+  constructor(operation: string, timeout: number) {
+    super(
+      `Operation timeout: ${operation} (${timeout}ms)`,
+      'OPERATION_TIMEOUT',
+      { operation, timeout }
+    );
+    this.name = 'OperationTimeoutError';
+  }
+}
+
+class FileTooLargeError extends JCFError {
+  constructor(path: string, size: number, maxSize: number) {
+    super(
+      `File too large: ${path} (${size} bytes, max ${maxSize})`,
+      'FILE_TOO_LARGE',
+      { path, size, maxSize }
+    );
+    this.name = 'FileTooLargeError';
+  }
+}
+
+class InsufficientSpaceError extends JCFError {
+  constructor(required: number, available: number) {
+    super(
+      `Insufficient space: ${required} required, ${available} available`,
+      'INSUFFICIENT_SPACE',
+      { required, available }
+    );
+    this.name = 'InsufficientSpaceError';
+  }
 }
 ```
 
----
-
-## 8. Utility Methods
-
-### 8.1 fileExists()
-
-```typescript
-async fileExists(path: string, versionId?: string): Promise<boolean>
-```
-
-### 8.2 getManifest()
-
-```typescript
-getManifest(): Manifest
-```
-
-### 8.3 dispose()
-
-```typescript
-async dispose(): Promise<void>
-```
-
-**Przykład**:
-```typescript
-// Cleanup
-await manager.dispose();
-```
-
-**Uwaga**: Zawsze wywołaj `dispose()` przed zakończeniem aplikacji (zamyka połączenia, workery, etc.)
-
----
-
-## 9. Error Handling
-
-### 9.1 Typy Błędów
-
-```typescript
-class JCFError extends Error {}
-
-class InvalidPathError extends JCFError {}
-class FileNotFoundError extends JCFError {}
-class VersionNotFoundError extends JCFError {}
-class FileTooLargeError extends JCFError {}
-class StorageError extends JCFError {}
-class ManifestCorruptionError extends JCFError {}
-class BlobCorruptionError extends JCFError {}
-```
-
-### 9.2 Przykład
+### Obsługa błędów
 
 ```typescript
 try {
-  await manager.addFile('test.txt', content);
+  await manager.saveCheckpoint('My changes');
 } catch (error) {
-  if (error instanceof FileTooLargeError) {
-    console.error('File too large!');
+  if (error instanceof FileNotFoundError) {
+    console.error('File not found:', error.details.path);
+  } else if (error instanceof VersionNotFoundError) {
+    console.error('Version does not exist:', error.details.versionId);
+  } else if (error instanceof ValidationError) {
+    console.error('Invalid input:', error.details.field, error.message);
   } else if (error instanceof StorageError) {
-    console.error('Storage error:', error.message);
+    console.error('Storage error:', error.originalError?.message);
+  } else if (error.code === 'OPERATION_TIMEOUT') {
+    console.error('Operation timed out, try again');
   } else {
     console.error('Unknown error:', error);
   }
 }
 ```
 
----
-
-## 10. TypeScript Types
-
-### 10.1 Import Types
+### Async Error Handling
 
 ```typescript
-import type {
-  JCFConfig,
-  FileInfo,
-  Version,
-  VersionDiff,
-  ProjectStats,
-  GCReport,
-  FileMetadata
-} from 'jcf-manager';
+// Z użyciem zdarzeń
+manager.on('error', (event) => {
+  console.error('Async error:', event.error);
+  // Obsłuż błąd asynchroniczny
+});
+
+// Z użyciem try/catch w async funkcjach
+async function safeOperation() {
+  try {
+    await manager.restoreVersion('some-version');
+  } catch (error) {
+    if (error instanceof VersionNotFoundError) {
+      // Spróbuj inną wersję
+      await manager.restoreVersion('HEAD~1');
+    } else {
+      throw error; // Przepuść dalej
+    }
+  }
+}
 ```
 
----
+### Error Recovery
 
-## 11. Best Practices
+Niektóre błędy można automatycznie naprawić:
 
-### 11.1 Do's ✅
+```typescript
+async function robustOperation() {
+  try {
+    await manager.verifyIntegrity({ repair: true });
+  } catch (error) {
+    if (error instanceof CorruptionError) {
+      console.log('Attempting repair...');
+      await manager.verifyIntegrity({ repair: true });
+    }
+  }
+}
+```
 
-1. **Zawsze wywołuj `init()`** przed użyciem
-2. **Używaj `try-catch`** dla async operacji
-3. **Call `dispose()`** przed exit
-4. **Używaj streaming** dla plików >50MB
-5. **Regularnie uruchamiaj GC**
-
-### 11.2 Don'ts ❌
-
-1. **Nie modify manifestu** bezpośrednio
-2. **Nie używaj długich ścieżek** (>255 chars)
-3. **Nie load wszystkich wersji** naraz
-4. **Nie ignore errors**
-5. **Nie używaj synchronicznych operacji**
-
----
-
-## 12. Przykłady Użycia
-
-### 12.1 Complete Workflow
+## Przykład użycia
 
 ```typescript
 import { JCFManager, BrowserAdapter } from 'jcf-manager';
 
-async function main() {
-  // 1. Inicjalizacja
-  const manager = new JCFManager({
-    author: 'Jan Kowalski',
-    compressionLevel: 6
-  });
-  await manager.init(new BrowserAdapter());
-  
-  // 2. Dodaj pliki
-  await manager.addFile('README.md', '# My Project');
-  await manager.addFile('src/index.js', 'console.log("Hello");');
-  
-  // 3. Pierwszy commit
-  const v1 = await manager.saveCheckpoint('Initial commit');
-  console.log(`Created v1: ${v1}`);
-  
-  // 4. Edycja
-  await manager.addFile('src/index.js', 'console.log("Hello World");');
-  await manager.addFile('src/utils.js', 'export const add = (a,b) => a+b;');
-  
-  // 5. Drugi commit
-  const v2 = await manager.saveCheckpoint('Add utils');
-  
-  // 6. Historia
-  const history = manager.getVersionHistory();
-  console.log(`Total versions: ${history.length}`);
-  
-  // 7. Time travel
-  await manager.restoreVersion(v1);
-  console.log('Restored to v1');
-  
-  // 8. Export
-  const stream = await manager.export();
-  saveAs(await new Response(stream).blob(), 'project.jcf');
-  
-  // 9. Cleanup
-  await manager.dispose();
-}
+// Inicjalizacja
+const manager = new JCFManager();
+await manager.init(new BrowserAdapter());
 
-main().catch(console.error);
+// Dodanie plików
+await manager.addFile('package.json', JSON.stringify({
+  name: 'my-project',
+  version: '1.0.0'
+}));
+
+await manager.addFile('src/index.js', 'console.log("Hello World");');
+
+// Checkpoint
+const versionId = await manager.saveCheckpoint('Initial commit');
+
+// Lista plików
+const files = await manager.listFiles();
+
+// Pobranie zawartości
+const content = await manager.getFileContent('src/index.js');
+
+// Historia
+const history = await manager.getHistory();
+console.log(`Project has ${history.length} versions`);
 ```
-
----
-
-**Ostatnia aktualizacja**: 2025-12-18  
-**Wersja dokumentu**: 1.0.0
-

@@ -1,69 +1,63 @@
-# Problem Statement
+# Problem zarządzania wersjami plików w aplikacjach web
 
-> **Jaki problem rozwiązuje Kamaros?**
+## Scenariusz użycia
 
-[← Back: Overview](01-overview.md) | [Next: Key Concepts →](03-key-concepts.md)
+Tworzenie edytora kodu w przeglądarce (jak CodeSandbox/StackBlitz). Użytkownik pracuje nad projektem i potrzebuje:
+- Undo/Redo - cofanie zmian
+- History - przeglądanie historii edycji
+- Restore - przywrócenie do dowolnego punktu
+- Offline - działanie bez serwera
+- Performance - szybki dostęp do aktualnego stanu
 
----
+## Dostępne rozwiązania
 
-## Problem: Zarządzanie Wersjami Plików w Aplikacjach Web
+### Opcja A: Git (isomorphic-git)
 
-### Scenariusz
-Tworzysz edytor kodu w przeglądarce (jak CodeSandbox/StackBlitz). Użytkownik pracuje nad projektem i potrzebuje:
-1. **Undo/Redo** - cofanie zmian
-2. **History** - przeglądanie historii edycji
-3. **Restore** - przywrócenie do dowolnego punktu
-4. **Offline** - działanie bez serwera
-5. **Performance** - szybki dostęp do aktualnego stanu
-
-### Dostępne Rozwiązania
-
-#### Opcja A: Git (isomorphic-git)
-**Pros:**
+Zalety:
 - Sprawdzony system wersjonowania
 - Potężne narzędzia
 
-**Cons:**
-- ❌ Słaba obsługa plików binarnych (duże obrazy, wideo)
-- ❌ Skomplikowany (staging, branches, merge conflicts)
-- ❌ Pełna historia w pamięci (problem dla dużych projektów)
-- ❌ Nie działa dobrze z >100MB projektami w przeglądarce
+Wady:
+- Słaba obsługa plików binarnych (duże obrazy, wideo)
+- Skomplikowany (staging, branches, merge conflicts)
+- Pełna historia w pamięci (problem dla dużych projektów)
+- Nie działa dobrze z projektami większymi niż 100MB w przeglądarce
 
-#### Opcja B: Własny Format (Custom Binary)
-**Pros:**
+### Opcja B: Format własny (custom binary)
+
+Zalety:
 - Pełna kontrola
 
-**Cons:**
-- ❌ Brak standardów
-- ❌ Zero toolingu (debugging, recovery)
-- ❌ Długi czas rozwoju
-- ❌ Trudne utrzymanie
+Wady:
+- Brak standardów
+- Zero toolingu (debugging, recovery)
+- Długi czas rozwoju
+- Trudne utrzymanie
 
-#### Opcja C: Baza Danych (IndexedDB/SQLite)
-**Pros:**
+### Opcja C: Baza danych (IndexedDB/SQLite)
+
+Zalety:
 - Structured query
 
-**Cons:**
-- ❌ Brak kompresji
-- ❌ Trudne backup/export
-- ❌ Nie działa jako standalone file
-- ❌ Platform-specific
+Wady:
+- Brak kompresji
+- Trudne backup/export
+- Nie działa jako standalone file
+- Specyficzne dla platformy
 
-### Gap w Rynku
+## Luka na rynku
 
-**Potrzebujemy:**
-- ✅ Prostego formatu (łatwiejszy niż Git)
-- ✅ Dobrze radzi sobie z binariami
-- ✅ Działa offline
-- ✅ Fast HEAD access
-- ✅ Standard recovery tools (ZIP)
-- ✅ Izomorficzny (Browser/Node/Tauri)
+Potrzebny jest:
+- Prosty format (łatwiejszy niż Git)
+- Dobrze radzi sobie z binariami
+- Działa offline
+- Fast HEAD access
+- Standard recovery tools (ZIP)
+- Izomorficzny (Browser/Node/Tauri)
 
-**→ To jest Kamaros!**
+To jest Kamaros!
 
----
-
-## Problem 2: Rozmiar Pliku
+## Problem rozmiaru pliku
 
 ### Scenariusz
 Projekt zawiera:
@@ -71,77 +65,48 @@ Projekt zawiera:
 - 50 obrazów (~50MB)
 - Historia 100 commitów
 
-**Naiwne podejście** (snapshot każdej wersji):
-```
+### Naiwne podejście (snapshot każdej wersji):
 100 versions × (10MB text + 50MB images) = 6GB
-```
 
-**Git approach** (forward deltas + pack):
-```
+### Podejście Git (forward deltas + pack):
 ~500MB (lepiej, ale nadal duże)
-```
 
-**Kamaros approach** (reverse delta + CAS):
-```
-10MB (current text) +
-50MB (current images) +
-5MB (patches for 100 versions) +
-10MB (deduplicated old images) =
-~75MB (8x mniejsze niż Git!)
-```
+### Podejście Kamaros (reverse delta + CAS):
+10MB (current text) + 50MB (current images) + 5MB (patches for 100 versions) + 10MB (deduplicated old images) = ~75MB
 
-### Techniki Kompresji
+### Techniki kompresji
 
-1. **Reverse Delta**: HEAD zawsze pełny (szybki), historia jako patche
-2. **Content Addressable Storage**: Ten sam obraz użyty 10x → przechowany 1x
-3. **Smart Compression**: Tylko pliki, które się kompresują
+1. Reverse Delta: HEAD zawsze pełny (szybki), historia jako patche
+2. Content Addressable Storage: Ten sam obraz użyty 10x → przechowany 1x
+3. Smart Compression: Tylko pliki, które się kompresują
 
----
-
-## Problem 3: Performance w Przeglądarce
+## Problem wydajności w przeglądarce
 
 ### Scenariusz
 Użytkownik dodaje 500MB wideo do projektu w edytorze webowym.
 
-**Naiwne podejście**:
-```javascript
-const file = await fileInput.files[0];
-const buffer = await file.arrayBuffer(); // ❌ 500MB w RAM
-const hash = sha256(buffer);              // ❌ UI freeze
-await saveToIndexedDB(buffer);            // ❌ Quota exceeded
-```
+### Naiwne podejście:
+Ładowanie całego pliku do pamięci RAM, haszowanie na głównym wątku UI, zapis do IndexedDB.
 
-**Kamaros approach**:
-```javascript
-const file = await fileInput.files[0];
-const stream = file.stream();             // ✅ Streaming
-const hash = await hashStream(stream, {   // ✅ Web Worker (non-blocking)
-  worker: true
-});
-await manager.addFile('video.mp4', stream); // ✅ Chunked write
-```
+### Podejście Kamaros:
+Strumieniowe przetwarzanie, Web Workers dla haszowania, chunked write.
 
-**Result**:
-- ✅ RAM usage: ~50MB (buffer chunks)
-- ✅ UI responsive (Web Workers)
-- ✅ Incremental progress updates
-
----
+### Rezultat:
+- Zużycie RAM: ~50MB (bufor chunków)
+- UI responsywny (Web Workers)
+- Przyrostowe aktualizacje postępu
 
 ## Rozwiązanie: Kamaros JCF
 
-### Jak Kamaros Rozwiązuje Te Problemy?
+**JCF (JSON Content Format)** to inteligentny format pliku oparty na standardowym ZIP archive, który łączy prostotę ZIP z zaawansowanym systemem wersjonowania.
 
-| Problem | Kamaros Solution |
-|---------|------------------|
-| **Complexity** | Simple API (addFile, save Checkpoint, restoreVersion) |
-| **Binary files** | Content Addressable Storage + deduplication |
-| **File size** | Reverse delta + smart compression |
-| **Performance** | Streaming + Web Workers + LRU cache |
-| **Recovery** | Standard ZIP tools |
-| **Platform** | Adapter pattern (Browser/Node/Tauri) |
+### Jak Kamaros rozwiązuje te problemy?
 
----
-
-[← Back: Overview](01-overview.md) | [Next: Key Concepts →](03-key-concepts.md)
-
+| Problem | Rozwiązanie Kamaros |
+|---------|---------------------|
+| Złożoność | Simple API (addFile, saveCheckpoint, restoreVersion) |
+| Pliki binarne | Content Addressable Storage + deduplikacja |
+| Rozmiar pliku | Reverse delta + smart compression |
+| Wydajność | Streaming + Web Workers + LRU cache |
+| Recovery | Standard ZIP tools |
+| Platforma | Adapter pattern (Browser/Node/Tauri) |

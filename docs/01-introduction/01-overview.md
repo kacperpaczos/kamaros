@@ -1,183 +1,163 @@
-# Kamaros JCF Manager: Overview
+# Kamaros JCF Manager
 
-> **Czym jest Kamaros i dlaczego został stworzony?**
+## Inteligentny format pliku ZIP z wersjonowaniem
 
-[← Back to Index](../README.md) | [Next: Problem Statement →](02-problem-statement.md)
+**JCF (JSON Content Format)** to inteligentny format pliku oparty na standardowym ZIP archive, zaprojektowany do przechowywania projektów z pełną historią wersji. Łączy prostotę ZIP z zaawansowanym systemem wersjonowania Time-Travel.
 
----
+**Biblioteka JCF Manager** dostępna dla **TypeScript** i **Python** z wysokowydajnym **core w Rust** zapewnia efektywne zarządzanie plikami zgodnie ze specyfikacją formatu.
 
-## Co to jest JCF Manager?
+### Jak działa biblioteka:
 
-**JCF (JSON Container Format) Manager** to izomorficzna biblioteka JavaScript/TypeScript do zarządzania plikami projektowymi z wbudowanym systemem wersjonowania (Time-Travel Versioning).
+1. **Tworzy lub wczytuje specyfikację JCF** (`manifest.json`) - definicję struktury projektu i historii wersji
+2. **Wczytuje pliki zgodnie ze specyfikacją** - odczytuje i rekonstruuje pliki z formatu JCF
+3. **Zapisuje pliki zgodnie ze specyfikacją** - zapisuje do formatu JCF z wersjonowaniem
+4. **Waliduje zgodność ze specyfikacją** - sprawdza integralność i poprawność danych
+5. **Wersjonuje zgodnie ze specyfikacją** - zarządza historią zmian zgodnie z formatem JCF
 
-## Kluczowe Cechy
+**Ważne**: Biblioteka nie interpretuje zawartości plików - przechowuje dowolne pliki (`.js`, `.glsl`, `.json`, `.png`, etc.) zgodnie ze specyfikacją formatu JCF. To aplikacja decyduje, jakie pliki przechowuje i jak je interpretuje.
 
-### ✅ Reverse Delta Versioning
-HEAD zawsze przechowywany w pełnej formie, historia jako patche. Gwarantuje natychmiastowy dostęp do aktualnego stanu projektu.
+## Kluczowe cechy systemu
 
-### ✅ Content Addressable Storage (CAS)
+### Format pliku: Inteligentny ZIP
+Format JCF to standardowy ZIP archive z inteligentną strukturą wewnętrzną:
+- **Manifest.json** - specyfikacja projektu i historii wersji
+- **content/** - aktualny stan plików (working directory)
+- **.store/blobs/** - deduplikowane pliki binarne (CAS)
+- **.store/deltas/** - reverse delta patches dla plików tekstowych
+- **Rozszerzenie**: `.jcf`, **MIME type**: `application/x-jcf`
+
+### Reverse Delta Versioning
+Aktualna wersja przechowywana w pełnej postaci, historia jako patche. Zapewnia natychmiastowy dostęp do bieżącego stanu projektu.
+
+### Content Addressable Storage
 Automatyczna deduplikacja plików binarnych poprzez haszowanie SHA-256. Te same pliki przechowywane tylko raz.
 
-### ✅ Izomorficzność
-Działa w każdym środowisku JavaScript:
-- **Browser**: IndexedDB + File API
-- **Node.js**: fs/promises
-- **Tauri**: @tauri-apps/api/fs
-- **Deno**: Deno.* APIs (future)
+### Wielojęzyczna implementacja
+Biblioteka dostępna dla **TypeScript** i **Python** z **core w Rust**:
 
-### ✅ Streaming Support
-Obsługa plików >500MB bez przepełnienia pamięci RAM dzięki strumieniowemu przetwarzaniu.
+**TypeScript/JavaScript:**
+- Przeglądarka: IndexedDB + File API + Web Streams
+- Node.js: fs/promises + native streams
+- Tauri: @tauri-apps/api/fs
+- Deno/Bun: pełne wsparcie
 
-### ✅ Multi-threading
-Web Workers dla operacji CPU-intensive (hashing, diffing, compression) - UI pozostaje responsywny.
+**Python:**
+- asyncio-based API
+- Pydantic models dla typów
+- PyO3 FFI do Rust core
 
-### ✅ Production Ready
-Kompletna obsługa błędów, walidacja danych, comprehensive testing suite.
+**Rust Core (WASM):**
+- Wysokowydajne operacje: kompresja, haszowanie, diffing
+- Memory-safe implementation
+- WebAssembly dla przeglądarek
+- Native performance dla Node.js/Python
 
----
+### Streaming Support
+Obsługa plików większych niż 500MB bez przepełnienia pamięci RAM poprzez strumieniowe przetwarzanie.
 
-## Use Cases
+### Wielowątkowość
+- **TypeScript/JavaScript**: Wykorzystanie Web Workers (przeglądarka) oraz Worker Threads (Node.js) do przeniesienia operacji wymagających dużych zasobów CPU (haszowanie, diffing, kompresja) do osobnych wątków, dzięki czemu interfejs użytkownika pozostaje w pełni responsywny.
+- **Python**: Wykorzystanie modułu `multiprocessing` oraz natywnej wielowątkowości Rust Core. Dzięki zastosowaniu PyO3, krytyczne wydajnościowo operacje zwalniają blokadę GIL (Global Interpreter Lock), umożliwiając rzeczywistą równoległość obliczeń na wielu rdzeniach.
+- **Rust Core**: Równoległe przetwarzanie danych przy użyciu biblioteki Rayon oraz asynchroniczne operacje wejścia/wyjścia, co pozwala na optymalne wykorzystanie architektury wielordzeniowej przy minimalnym narzucie pamięciowym.
 
-### 1. Code Editors
-Edytory kodu w stylu VSCode z pełną historią zmian, offline-first.
+### Production Ready
+- **Kompleksowa obsługa błędów**: Precyzyjna diagnostyka i obsługa wyjątków na wszystkich warstwach (Rust, TS, Python), zapewniająca stabilność nawet w sytuacjach krytycznych.
+- **Rygorystyczna walidacja**: Automatyczna weryfikacja schematu `manifest.json` oraz walidacja sum kontrolnych SHA-256 dla każdego blobu, gwarantująca 100% integralności danych.
+- **Zaawansowane testy**: Rozbudowany zestaw testów jednostkowych i integracyjnych (CI/CD) obejmujący różne systemy operacyjne oraz środowiska uruchomieniowe (Node.js, Browser, Python).
+- **Bezpieczeństwo zapisu**: Mechanizmy atomowych operacji na plikach zapobiegające uszkodzeniu archiwum w przypadku nagłego przerwania procesu.
 
-```
-Przykład: Visual Studio Code Online
-- Local-first editing
-- Complete version history
-- Fast restore to any point
-```
-
-### 2. Design Tools
-Aplikacje graficzne w stylu Figma z version control dla designów.
-
-```
-Przykład: Design Editor
-- Layer versioning
-- Asset deduplication (ikony, obrazy)
-- Branch designs (future)
-```
-
-### 3. Game Editors
-Edytory gier jak Unity z wersjonowaniem asset'ów.
+## Architektura wysokiego poziomu
 
 ```
-Przykład: Game Level Editor
-- Scene versioning
-- Texture/model deduplication
-- Collaborative editing (with sync layer)
-```
-
-### 4. Document Editors
-Edytory dokumentów jak Google Docs z offline-first approach.
-
-```
-Przykład: Rich Text Editor
-- Document history
-- Binary embedding (images, files)
-- Conflict-free merges (future)
-```
-
-### 5. Project Management & CAD
-Narzędzia CAD i 3D modeling z kompleksowym version control.
-
-```
-Przykład: 3D Modeling Tool
-- Model versioning
-- Material library (deduped)
-- Large file support (streaming)
-```
-
----
-
-## Architektura High-Level
-
-```
-┌─────────────────────────────────────────┐
-│         User Application                │
-│    (Browser/Node/Tauri/Deno)           │
-└────────────────┬────────────────────────┘
-                 │
-                 │ Public API
-                 ↓
-┌─────────────────────────────────────────┐
-│         JCFManager Class                │
-│  (Facade for all operations)            │
-└────────────────┬────────────────────────┘
-                 │
-        ┌────────┴────────┐
-        │                 │
-        ↓                 ↓
-┌──────────────┐  ┌──────────────┐
-│ Core Layer   │  │ Storage      │
-│ - Versioning │  │ - ZIP        │
-│ - Diffing    │  │ - CAS        │
-│ - CAS        │  │ - Deltas     │
-└──────┬───────┘  └──────┬───────┘
-       │                 │
-       │    ┌────────────┘
+┌─────────────────────────────────┐
+│       Aplikacja użytkownika      │
+│  (Browser/Node/Tauri/Deno)      │
+└─────────────────┬───────────────┘
+                  │
+                  │ Public API
+                  ↓
+┌─────────────────────────────────┐
+│       Klasa JCFManager          │
+│ (Facade dla wszystkich operacji)│
+└─────────────────┬───────────────┘
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+        ↓                   ↓
+┌─────────────┐  ┌─────────────┐
+│ Warstwa     │  │ Warstwa     │
+│ rdzeniowa   │  │ przechowy-  │
+│ - Wersjonowanie││ - ZIP       │
+│ - Diffing    │  │ - CAS       │
+│ - CAS        │  │ - Deltas    │
+└──────┬──────┘  └─────┬─────┘
+       │                │
+       │    ┌───────────┘
        ↓    ↓
 ┌──────────────────────┐
-│  Adapter Layer       │
-│  (Platform-specific) │
+│  Warstwa adapterów   │
+│  (specyficzna dla    │
+│   platformy)         │
 │  - Browser           │
 │  - Node.js           │
 │  - Tauri             │
 └──────────────────────┘
 ```
 
----
+## Zastosowania
 
-## Kluczowe Technologie
+### Edytory kodu
+Edytory kodu w stylu VSCode z pełną historią zmian, praca offline.
 
-| Komponent | Technologia | Dlaczego? |
-|-----------|-------------|-----------|
-| **Kompresja** | fflate | 20x szybsza od JSZip, native streaming |
-| **Diffing** | diff-match-patch | Battle-tested (Google Docs), pełne API |
-| **Hashing** | WebCrypto/hash-wasm | Native, secure SHA-256 |
-| **ID Generation** | uuid v4 | Collision-resistant, standard |
-| **Type Safety** | TypeScript 5.3+ | Compile-time errors, better DX |
+### Narzędzia graficzne
+Aplikacje graficzne w stylu Figma z wersjonowaniem elementów projektu.
 
----
+### Edytory gier
+Edytory gier jak Unity z wersjonowaniem assetów.
 
-## Korzyści dla Użytkowników
+### Edytory dokumentów
+Edytory dokumentów jak Google Docs z podejściem offline-first.
 
-### Dla Developerów
-- **Zero configuration**: Działa out-of-the-box
-- **Type-safe API**: TypeScript interfaces
-- **Platform agnostic**: Jeden kod, wszystkie platformy
-- **Extensible**: Adapter pattern, plugin system (future)
+### Narzędzia CAD i modelowania 3D
+Narzędzia CAD i modelowania 3D z kompleksowym version control.
 
-### Dla End-Users
-- **Offline-first**: Nie wymaga serwera
-- **Fast**: Reverse delta = instant HEAD access
-- **Reliable**: ZIP format = standard recovery tools
-- **Efficient**: Deduplication = mniejszy rozmiar
+## Technologie kluczowe
 
----
+| Komponent | Technologia | Uzasadnienie |
+|-----------|-------------|--------------|
+| Kompresja | fflate | Dwudziestokrotnie szybsza od JSZip, natywny streaming |
+| Diffing | diff-match-patch | Sprawdzona technologia (Google Docs), kompletne API |
+| Hashing | WebCrypto/hash-wasm | Natywna, bezpieczna implementacja SHA-256 |
+| Generowanie ID | uuid v4 | Odporne na kolizje, standard |
+| Bezpieczeństwo typów | TypeScript 5.3+ | Błędy kompilacji, lepsza DX |
 
-## Porównanie z Alternatywami
+## Korzyści dla deweloperów
 
-| Feature | Kamaros JCF | Git (isomorphic-git) | Custom Format |
-|---------|-------------|----------------------|---------------|
-| Browser support | ✅ Native | ✅ Port | ⚠️ Custom |
-| File size (large) | ✅ Streaming | ❌ RAM limit | ✅ Custom |
-| Binary dedup | ✅ CAS | ❌ No | ⚠️ Manual |
-| HEAD performance | ✅ O(1) | ✅ O(1) | ⚠️ Varies |
-| Recovery tools | ✅ ZIP tools | ✅ Git | ❌ None |
-| Learning curve | ✅ Simple | ⚠️ Steep | ❌ Unknown |
+Dla deweloperów:
+- Zero configuration - działa out-of-the-box
+- Type-safe API - interfejsy TypeScript
+- Platform agnostic - jeden kod, wszystkie platformy
+- Extensible - wzorzec adapter, system plugin (przyszłość)
 
-**Verdict**: Kamaros wypełnia niszę między Git (zbyt złożony, słaby z binariami) a custom solutions (brak standardów).
+Dla użytkowników końcowych:
+- Offline-first - nie wymaga serwera
+- Szybki - reverse delta = natychmiastowy dostęp do HEAD
+- Niezawodny - format ZIP = standardowe narzędzia recovery
+- Efektywny - deduplikacja = mniejszy rozmiar
 
----
+## Porównanie z alternatywami
 
-## Next Steps
+| Cecha | Kamaros JCF | Git (isomorphic-git) | Format własny |
+|-------|-------------|----------------------|----------------|
+| Wsparcie przeglądarki | Tak | Tak | Nie |
+| Rozmiar plików dużych | Tak | Nie | Tak |
+| Deduplikacja binariów | Tak | Nie | Ręcznie |
+| Wydajność HEAD | Tak | Tak | Zależy |
+| Narzędzia recovery | Tak | Tak | Brak |
+| Krzywa uczenia | Prosta | Strom | Nieznana |
 
-Teraz, gdy rozumiesz czym jest Kamaros, przejdźmy do szczegółowego problemu, który rozwiązuje:
+Kamaros wypełnia niszę między Git (zbyt złożony, słaby z binariami) a rozwiązaniami własnymi (brak standardów).
 
-**→ [02. Problem Statement](02-problem-statement.md)**: Dlaczego potrzebujemy nowego formatu?
+## Techniczne założenia
 
----
-
-[← Back to Index](../README.md) | [Next: Problem Statement →](02-problem-statement.md)
-
+Format JCF to standardowy ZIP archive zaprojektowany specjalnie dla przechowywania projektów z pełną historią wersji. Łączy prostotę ZIP z zaawansowanym systemem wersjonowania.

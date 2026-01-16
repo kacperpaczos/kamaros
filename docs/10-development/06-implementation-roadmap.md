@@ -303,8 +303,8 @@ Dokumentacja, testy, release v1.0.0.
 - [ ] Encryption layer
 - [ ] CLI tool (`kamaros` command)
 - [ ] Real-time collaboration (with sync layer)
-- [ ] Python bindings (PyO3)
-- [ ] Rust core (WASM for JS)
+- [x] Python bindings (PyO3) - ✅ Dostępne
+- [x] Rust core (WASM for JS) - ✅ Zaimplementowane
 
 ---
 
@@ -339,4 +339,5 @@ Dokumentacja, testy, release v1.0.0.
 ---
 
 [← Back: Contributing](05-contributing.md) | [Up to Development](01-setup-environment.md)
+
 

@@ -10,7 +10,7 @@
 
 Algorytm `saveCheckpoint` jest sercem systemu wersjonowania. Jego zadanie:
 1. Wykryć zmienione pliki
-2. Wygenerować reverse patches dla tekstów
+2. Wygenerować reverse patches dla tekstów (NEW → OLD)
 3. Zadeduplikować binaria (CAS)
 4. Utworzyć nowy Version object
 5. Zaktualizować manifest i ZIP
@@ -35,6 +35,15 @@ POSTCONDITION:
   - New version created
   - HEAD pointer updated
   - ZIP file contains new state
+```
+
+### Step 0: Initialization
+
+**Purpose**: Prepare new version ID and context.
+
+```typescript
+const versionId = uuidv4(); // Generate new version ID immediately
+const currentVersionId = this.manifest.refs.get('head')!;
 ```
 
 ### Step 1: Identify Changed Files
@@ -62,7 +71,7 @@ async identifyChanges(): Promise<FileChange[]> {
         currentHash
       });
     } else if (headFileState.hash !== currentHash) {
-      // Modified file
+      // Modified file (hash comparison works for both text and binary for detection)
       changes.push({
         path,
         type: 'modified',
@@ -97,11 +106,13 @@ async identifyChanges(): Promise<FileChange[]> {
 **Purpose**: Create reverse patches (NEW → OLD) for text files.
 
 ```typescript
-async processTextFiles(changes: FileChange[]): Promise<void> {
+async processTextFiles(changes: FileChange[], versionId: string): Promise<void> {
   const textChanges = changes.filter(c => 
     this.manifest.fileMap.get(c.path)?.type === 'text'
   );
   
+  const currentVersionId = this.manifest.refs.get('head')!;
+
   for (const change of textChanges) {
     if (change.type === 'deleted') continue;
     
@@ -116,20 +127,23 @@ async processTextFiles(changes: FileChange[]): Promise<void> {
     if (change.type === 'modified') {
       const oldContent = await this.getFileFromVersion(
         change.path,
-        this.manifest.refs.get('head')!
+        currentVersionId
       );
       oldText = new TextDecoder().decode(oldContent);
     }
     
     // Compute REVERSE patch: NEW → OLD
+    // patch_make(new, old) creates a patch that transforms NEW into OLD
     const reversePatch = await this.deltaManager.computeDelta(
-      newText,  // from
-      oldText   // to
+      newText,  // from (current content)
+      oldText   // to (previous content)
     );
     
     // Save patch
+    // Patch name convention: {NEW_VERSION_ID}_{FILE_HASH}.patch
+    // This patch allows restoring OLD version from NEW version
     await this.deltaManager.saveDelta(
-      this.manifest.refs.get('head')!,  // current HEAD
+      versionId,        // new version ID (patch owner)
       change.path,
       reversePatch
     );
@@ -225,11 +239,11 @@ logo.png reverted to v1 in v10 → hash abc123 → blob exists, reuse!
 
 ```typescript
 async createVersion(
+  versionId: string, // Generated in Step 0
   message: string,
   author: string,
   changes: FileChange[]
 ): Promise<Version> {
-  const versionId = uuidv4();
   const parentId = this.manifest.refs.get('head') || null;
   
   // Copy parent's fileStates
@@ -248,13 +262,25 @@ async createVersion(
         deleted: true
       });
     } else {
-      fileStates.set(change.path, {
+      // For text files: contentRef points to the patch that RESTORES parent version
+      // BUT for restore logic to work, we need to know how to get back FROM this version
+      // The patch created in Step 2 (vN->vN-1) is associated with vN (this new version)
+      
+      const fileState: FileState = {
         inodeId: fileEntry!.inodeId,
-        hash: fileEntry!.currentHash,
-        contentRef: fileEntry!.type === 'text' 
-          ? `.store/deltas/${versionId}_${hashPath(change.path)}.patch`
-          : undefined
-      });
+        // Text files don't strictly need hash in FileState if using patches, 
+        // but it's good for integrity checks.
+        hash: fileEntry!.currentHash, 
+      };
+
+      if (fileEntry!.type === 'text') {
+        // Reference to the patch: NEW (this version) -> OLD (parent)
+        // This patch allows going back in time from this version.
+        fileState.contentRef = `.store/deltas/${versionId}_${hashPath(change.path)}.patch`;
+      } 
+      // Binary files use 'hash' directly for CAS lookup, no contentRef needed usually
+      
+      fileStates.set(change.path, fileState);
     }
   }
   
@@ -397,6 +423,9 @@ async saveCheckpoint(message: string, author?: string): Promise<string> {
   try {
     this.emit('checkpoint:start', { message });
     
+    // Step 0: Initialization
+    const versionId = uuidv4();
+
     // Step 1: Identify changes
     this.emit('checkpoint:progress', { phase: 'scanning', percent: 10 });
     const changes = await this.identifyChanges();
@@ -407,7 +436,7 @@ async saveCheckpoint(message: string, author?: string): Promise<string> {
     
     // Step 2: Process text files
     this.emit('checkpoint:progress', { phase: 'diffing', percent: 20 });
-    await this.processTextFiles(changes);
+    await this.processTextFiles(changes, versionId);
     
     // Step 3: Process binary files
     this.emit('checkpoint:progress', { phase: 'hashing', percent: 50 });
@@ -416,6 +445,7 @@ async saveCheckpoint(message: string, author?: string): Promise<string> {
     // Step 4: Create version
     this.emit('checkpoint:progress', { phase: 'creating-version', percent: 70 });
     const version = await this.createVersion(
+      versionId,
       message,
       author ?? this.config.defaultAuthor,
       changes
@@ -605,6 +635,7 @@ async processTextFiles(changes: FileChange[]): Promise<void> {
 flowchart TD
     Start([Start: saveCheckpoint])
     
+    Init[Step 0: Init & Generate versionId]
     Scan[Step 1: Scan files]
     Changes{Any changes?}
     NoChanges[Throw NoChangesError]
@@ -628,7 +659,8 @@ flowchart TD
     
     Done([Return versionId])
     
-    Start --> Scan
+    Start --> Init
+    Init --> Scan
     Scan --> Changes
     Changes -->|No| NoChanges
     Changes -->|Yes| ProcessText
@@ -655,4 +687,3 @@ flowchart TD
 ---
 
 [← Back to Technical Decisions](../04-technical-decisions/06-performance-rationale.md) | [Next: Restore Version →](02-restore-version.md)
-

@@ -152,6 +152,9 @@ Kompletna dokumentacja API.
 - [`05-typescript-types.md`](07-api-reference/05-typescript-types.md) - Definicje typów
 - [`06-rust-bindings.md`](07-api-reference/06-rust-bindings.md) - WASM FFI
 - [`07-python-bindings.md`](07-api-reference/07-python-bindings.md) - PyO3 interface
+- [`08-filesystem-adapters.md`](07-api-reference/08-filesystem-adapters.md) - Adaptery systemu plików
+- [`09-events-api.md`](07-api-reference/09-events-api.md) - System zdarzeń
+- [`10-error-handling.md`](07-api-reference/10-error-handling.md) - Obsługa błędów
 
 **Główne pytanie:** *"Jakie metody są dostępne i jak ich używać?"*
 
@@ -170,6 +173,7 @@ Praktyczne przewodniki i przykłady.
 - [`06-streaming-large-files.md`](08-usage-guide/06-streaming-large-files.md) - Pliki >500MB
 - [`07-platform-specific.md`](08-usage-guide/07-platform-specific.md) - Browser/Node/Tauri
 - [`08-advanced-patterns.md`](08-usage-guide/08-advanced-patterns.md) - Zaawansowane wzorce
+- [`09-cli-commands.md`](08-usage-guide/09-cli-commands.md) - Komendy CLI
 
 **Główne pytanie:** *"Jak rozwiązać konkretne problemy?"*
 
