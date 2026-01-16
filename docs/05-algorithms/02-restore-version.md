@@ -550,3 +550,47 @@ flowchart TD
 ---
 
 [← Back: Save Checkpoint](01-save-checkpoint.md) | [Next: Diff Generation →](03-diff-generation.md)
+
+---
+
+## Implementacja Rust (kamaros-corelib)
+
+Algorytm został zaimplementowany w Rust jako `RestoreVersionUseCase`:
+
+### Lokalizacja
+```
+core/src/application/restore_version.rs
+```
+
+### Struktura Use Case
+
+```rust
+pub struct RestoreVersionUseCase<S, D>
+where
+    S: StoragePort,
+    D: DiffPort,
+{
+    storage: S,
+    diff: D,
+}
+```
+
+### Kluczowe metody
+
+| Metoda | Opis |
+|--------|------|
+| `find_version_path()` | BFS przez DAG wersji |
+| `restore_text_file()` | Aplikowanie patchy wstecz |
+| `execute()` | Główna logika przywracania |
+
+### Porty użyte
+
+- `StoragePort`: read/write/delete/exists dla `/content/` i `.store/`
+- `DiffPort`: `apply_patch()` dla unified diff
+
+### Testy
+
+```bash
+cargo test application::restore_version::tests
+```
+
