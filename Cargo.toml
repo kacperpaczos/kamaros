@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "core",
-    "wasm"
+    "wasm",
+    "pyo3"
 ]
 resolver = "2"
