@@ -11,52 +11,63 @@ graph TD
     subgraph "kamaros/"
         ROOT[kamaros/]
         
-        subgraph CORE["core/ (Rust)"]
+        subgraph CORE["core/ (Rust - Clean Core)"]
             CORE_SRC[src/]
             LIB_RS[lib.rs]
-            JCF_RS[jcf.rs]
-            VERSION_RS[versioning.rs]
-            DIFF_RS[diff.rs]
-            HASH_RS[hash.rs]
-            ZIP_RS[zip.rs]
-            MANIFEST_RS[manifest.rs]
-            CAS_RS[cas.rs]
-            CARGO[Cargo.toml]
+            DOMAIN[domain/]
+            MAN_RS[manifest.rs]
+            VER_RS[version.rs]
+            BLOB_RS[blob.rs]
+            APPLICATION[application/]
+            SAVE_RS[save_checkpoint.rs]
+            REST_RS[restore_version.rs]
+            PORTS[ports/]
+            PORTS_MOD[mod.rs - traits]
+            INFRA[infrastructure/]
+            MEM_ST[memory_storage.rs]
+            DIFF_RS[simple_diff.rs]
+            HASH_RS[sha256_hasher.rs]
+            CARGO_CORE[Cargo.toml]
+        end
+        
+        subgraph WASM["wasm/ (WASM Bindings)"]
+            WASM_SRC[src/]
+            WASM_LIB[lib.rs - #wasm_bindgen]
+            WASM_PKG[pkg/ - npm output]
+            CARGO_WASM[Cargo.toml]
         end
         
         subgraph JS["js/ (TypeScript)"]
             JS_SRC[src/]
             INDEX_TS[index.ts]
-            JCFM_TS[JCFManager.ts]
-            ADAPTERS[adapters/]
+            ADAPTERS[adapters/ TODO]
             BROWSER_AD[BrowserAdapter.ts]
             NODE_AD[NodeAdapter.ts]
-            TAURI_AD[TauriAdapter.ts]
-            CORE_WRAP[core/]
-            VER_MGR[VersionManager.ts]
-            FILE_MGR[FileManager.ts]
-            DELTA_MGR[DeltaManager.ts]
-            TYPES_TS[types.ts]
+            PKG_JSON[package.json]
         end
         
-        subgraph PY["python/ (PyO3)"]
+        subgraph PY["python/ (PyO3 - TODO)"]
             PY_SRC[src/]
-            PY_INIT[__init__.py]
             PY_KAMAROS[kamaros/]
         end
     end
     
     ROOT --> CORE
+    ROOT --> WASM
     ROOT --> JS
     ROOT --> PY
+    
     CORE_SRC --> LIB_RS
-    CORE_SRC --> JCF_RS
-    CORE_SRC --> VERSION_RS
-    CORE_SRC --> DIFF_RS
-    CORE_SRC --> HASH_RS
-    CORE_SRC --> ZIP_RS
-    CORE_SRC --> MANIFEST_RS
-    CORE_SRC --> CAS_RS
+    CORE_SRC --> DOMAIN
+    CORE_SRC --> APPLICATION
+    CORE_SRC --> PORTS
+    CORE_SRC --> INFRA
+    
+    WASM --> CORE
+    
+    style WASM fill:#E1BEE7,stroke:#7B1FA2
+    style CORE fill:#C8E6C9,stroke:#388E3C
+    style JS fill:#BBDEFB,stroke:#1976D2
 ```
 
 ---
