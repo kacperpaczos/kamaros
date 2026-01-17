@@ -1,0 +1,21 @@
+[package]
+name = "kamaros-corelib"
+version = "0.1.0"
+edition = "2021"
+description = "Core logic for Kamaros JCF Manager"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+sha2 = "0.10"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+similar = "2.6"
+async-trait = "0.1"
+zip = "2.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

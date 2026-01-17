@@ -49,6 +49,29 @@ interface FileState {
 - Zoptymalizowana dla częstych operacji add/remove
 - Szybsza dla >100 kluczy
 
+## Blob Index - Metadane plików binarnych
+
+### Struktura
+
+```typescript
+interface BlobIndex {
+  [hash: string]: BlobMetadata;
+}
+
+interface BlobMetadata {
+  mimeType: string;       // np. "image/png"
+  originalName: string;   // np. "logo.png"
+  size: number;           // bytes
+  addedAt: string;        // ISO timestamp
+  refCount: number;       // Reference counting dla GC
+  tags?: string[];        // Optional tags
+}
+```
+
+### Cel
+Przechowywanie metadanych dla blobów (CAS) poza głównym plikiem `manifest.json`, aby zachować lekkość manifestu (Opcja C).
+
+
 ## Version Graph - DAG nawigacji wersji
 
 ### Struktura

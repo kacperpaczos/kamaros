@@ -687,3 +687,52 @@ flowchart TD
 ---
 
 [← Back to Technical Decisions](../04-technical-decisions/06-performance-rationale.md) | [Next: Restore Version →](02-restore-version.md)
+
+---
+
+## Implementacja Rust (kamaros-corelib)
+
+Algorytm został zaimplementowany w Rust jako `SaveCheckpointUseCase`:
+
+### Lokalizacja
+```
+core/src/application/save_checkpoint.rs
+```
+
+### Struktura Use Case
+
+```rust
+pub struct SaveCheckpointUseCase<S, D, H>
+where
+    S: StoragePort,
+    D: DiffPort,
+    H: HasherPort,
+{
+    storage: S,
+    diff: D,
+    hasher: H,
+}
+```
+
+### Porty użyte w implementacji
+
+| Port | Trait | Adapter |
+|------|-------|---------|
+| Storage I/O | `StoragePort` | `MemoryStorage` (test), NodeFsStorage (prod) |
+| Text Diffing | `DiffPort` | `SimpleDiff` (wrapper na `similar` crate) |
+| Hashing | `HasherPort` | `Sha256Hasher` (wrapper na `sha2` crate) |
+
+### Kluczowe różnice vs TypeScript
+
+1. **Async/Await**: Rust używa `async-trait` dla asynchronicznych operacji
+2. **Generics**: Use case jest generyczny po portach, co umożliwia dependency injection
+3. **Error handling**: Używamy `PortResult<T>` zamiast exceptions
+
+### Testy
+
+```bash
+cargo test domain::tests::test_manifest_serialization
+cargo test infrastructure::memory_storage::tests
+cargo test infrastructure::sha256_hasher::tests
+```
+
