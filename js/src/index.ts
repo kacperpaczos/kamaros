@@ -1,71 +1,30 @@
 /**
- * Kamaros TypeScript Bindings
+ * Kamaros TypeScript Library
  * 
- * Re-exports WASM module and provides high-level API.
+ * High-level API for managing JCF (JSON Content Format) files.
+ * 
+ * @example
+ * ```typescript
+ * import { JCFManager, NodeAdapter } from 'kamaros-ts';
+ * 
+ * const adapter = new NodeAdapter('./projects');
+ * const manager = await JCFManager.create(adapter);
+ * await manager.createProject('MyProject');
+ * await manager.save('myproject.jcf');
+ * ```
+ * 
+ * @packageDocumentation
  */
 
-// Re-export WASM bindings
-// Note: Consumer must call init() before using other functions
-export {
-    default as init,
-    version,
-    greet,
-    create_empty_manifest,
-    parse_manifest,
-    get_manifest_info,
-} from '../../wasm/pkg/kamaros_wasm.js';
+// Re-export types
+export * from './types';
 
-// Type definitions
-export interface StorageAdapter {
-    read(path: string): Promise<Uint8Array>;
-    write(path: string, data: Uint8Array): Promise<void>;
-    delete(path: string): Promise<void>;
-    exists(path: string): Promise<boolean>;
-    list(dir: string): Promise<string[]>;
-}
+// Main API
+export { JCFManager } from './api/JCFManager';
 
-export interface Manifest {
-    formatVersion: string;
-    metadata: {
-        name: string;
-        description?: string;
-        created: string;
-        lastModified: string;
-        author?: string;
-    };
-    fileMap: Record<string, FileEntry>;
-    versionHistory: Version[];
-    refs: Record<string, string>;
-    renameLog: RenameEntry[];
-}
+// Adapters
+export { NodeAdapter } from './adapters/NodeAdapter';
+export { MemoryAdapter } from './adapters/MemoryAdapter';
 
-export interface FileEntry {
-    inodeId: string;
-    type: 'text' | 'binary';
-    currentHash?: string;
-    created: string;
-    modified: string;
-}
-
-export interface Version {
-    id: string;
-    parentId?: string;
-    timestamp: string;
-    message: string;
-    author: string;
-    fileStates: Record<string, FileState>;
-}
-
-export interface FileState {
-    inodeId: string;
-    hash?: string;
-    contentRef?: string;
-    deleted?: boolean;
-}
-
-export interface RenameEntry {
-    from: string;
-    to: string;
-    timestamp: string;
-    versionId: string;
-}
+// WASM utilities (lazy loaded)
+export { initWasm, getWasm } from './wasm';
