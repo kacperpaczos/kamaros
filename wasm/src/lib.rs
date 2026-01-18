@@ -117,6 +117,14 @@ pub async fn save_checkpoint(
             .map_err(|e| JsValue::from_str(&e))?;
         let hash = compute_sha256(&content);
         
+        // CAS Strategy: Store content in blobs if not exists
+        let blob_path = format!(".store/blobs/{}", hash);
+        if !storage.exists(&blob_path).await.map_err(|e| JsValue::from_str(&e))? {
+            // Write blob
+            storage.write(&blob_path, &content).await
+                .map_err(|e| JsValue::from_str(&e))?;
+        }
+        
         let inode_id = if let Some(entry) = manifest.file_map.get(file_path) {
             // Check if modified
             if entry.current_hash.as_ref() != Some(&hash) {
@@ -132,7 +140,7 @@ pub async fn save_checkpoint(
         file_states.insert(file_path.clone(), FileState {
             inode_id: inode_id.clone(),
             hash: Some(hash.clone()),
-            content_ref: None,
+            content_ref: Some(format!("blobs/{}", hash)), // Store reference
             deleted: None,
         });
         
@@ -199,6 +207,102 @@ pub async fn save_checkpoint(
     
     Ok(result.into())
 }
+
+/// Restore version - checkout specific version
+/// 
+/// Restores working directory to state at version_id.
+/// 
+/// @param js_manifest - current manifest object
+/// @param js_storage - StorageAdapter
+/// @param version_id - target version ID
+#[wasm_bindgen]
+pub async fn restore_version(
+    js_manifest: JsValue,
+    js_storage: JsStorageAdapter,
+    version_id: &str,
+) -> Result<JsValue, JsValue> {
+    let mut manifest: Manifest = serde_wasm_bindgen::from_value(js_manifest)
+        .map_err(|e| JsValue::from_str(&format!("Parse manifest error: {}", e)))?;
+    
+    let storage = js_adapter::JsStorageWrapper::new(js_storage);
+    
+    // Find target version
+    let target_version = manifest.version_history.iter()
+        .find(|v| v.id == version_id)
+        .ok_or_else(|| JsValue::from_str(&format!("Version {} not found", version_id)))?;
+        
+    let final_files = &target_version.file_states;
+    let mut files_restored = 0u32;
+    let mut files_deleted = 0u32;
+    
+    // 1. Restore files from version state
+    for (path, state) in final_files {
+        if state.deleted.unwrap_or(false) {
+            // Ensure deleted
+            if storage.exists(&format!("content/{}", path)).await.map_err(|e| JsValue::from_str(&e))? {
+                storage.delete(&format!("content/{}", path)).await.map_err(|e| JsValue::from_str(&e))?;
+                files_deleted += 1;
+            }
+            continue;
+        }
+        
+        // Restore content
+        // Try content_ref first, then hash
+        let blob_path = if let Some(ref r) = state.content_ref {
+             format!(".store/{}", r)
+        } else if let Some(ref h) = state.hash {
+             format!(".store/blobs/{}", h)
+        } else {
+            // No content ref or hash? Skip or error?
+            // Existing file might be kept if no change, but here we assume full restore
+             continue; 
+        };
+        
+        if storage.exists(&blob_path).await.map_err(|e| JsValue::from_str(&e))? {
+             let content = storage.read(&blob_path).await.map_err(|e| JsValue::from_str(&e))?;
+             storage.write(&format!("content/{}", path), &content).await.map_err(|e| JsValue::from_str(&e))?;
+             files_restored += 1;
+        } else {
+             return Err(JsValue::from_str(&format!("Missing blob for file {}: {}", path, blob_path)));
+        }
+    }
+    
+    // 2. Cleanup: Delete files in working dir that are NOT in target version
+    // (This matches 'git checkout' behavior of removing untracked/extra files if we want exact state match,
+    // actually git checkout usually keeps untracked files, but restores tracked ones.
+    // Kamaros Core RestoreVersion deletes files that exist in HEAD but not in Target.
+    // Here we should probably check what's in current directory vs target.)
+    
+    let current_files = storage.list("content/").await.map_err(|e| JsValue::from_str(&e))?;
+    for file in current_files {
+        if !final_files.contains_key(&file) {
+             // File exists in workspace but not in target version
+             // Is it tracked? If it was in Manifest.file_map (HEAD), it should be deleted.
+             // If it's untracked, maybe keep it?
+             // Core logic: "Delete files that exist in HEAD but not in Target"
+             if manifest.file_map.contains_key(&file) {
+                 storage.delete(&format!("content/{}", file)).await.map_err(|e| JsValue::from_str(&e))?;
+                 files_deleted += 1;
+             }
+        }
+    }
+    
+    // Update refs
+    manifest.refs.insert("head".to_string(), version_id.to_string());
+    
+    // Return result
+    let result = js_sys::Object::new();
+    let updated_manifest = serde_wasm_bindgen::to_value(&manifest)
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        
+    js_sys::Reflect::set(&result, &"manifest".into(), &updated_manifest)?;
+    js_sys::Reflect::set(&result, &"restoredVersionId".into(), &version_id.into())?;
+    js_sys::Reflect::set(&result, &"filesRestored".into(), &files_restored.into())?;
+    js_sys::Reflect::set(&result, &"filesDeleted".into(), &files_deleted.into())?;
+    
+    Ok(result.into())
+}
+
 
 // Helper: Get current timestamp using JS Date API
 fn current_timestamp() -> String {
