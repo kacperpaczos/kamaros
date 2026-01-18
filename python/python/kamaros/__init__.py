@@ -16,7 +16,7 @@ from .adapters import MemoryAdapter, FileAdapter
 
 # Import native functions from Rust (when built)
 try:
-    from kamaros._native import version, greet, create_empty_manifest, get_manifest_info
+    from kamaros._native import version, greet, create_empty_manifest, get_manifest_info, save_checkpoint, restore_version
 except ImportError:
     # Fallback for development without native module
     def version() -> str:
@@ -29,24 +29,30 @@ except ImportError:
         from datetime import datetime
         now = datetime.now().isoformat()
         return {
-            "format_version": "1.0.0",
+            "formatVersion": "1.0.0",
             "metadata": {
                 "name": project_name,
                 "created": now,
-                "last_modified": now,
+                "lastModified": now,
             },
-            "file_map": {},
-            "version_history": [],
+            "fileMap": {},
+            "versionHistory": [],
             "refs": {"head": ""},
-            "rename_log": [],
+            "renameLog": [],
         }
     
     def get_manifest_info(manifest: dict) -> dict:
         return {
             "name": manifest.get("metadata", {}).get("name", ""),
-            "version_count": len(manifest.get("version_history", [])),
-            "file_count": len(manifest.get("file_map", {})),
+            "version_count": len(manifest.get("versionHistory", [])),
+            "file_count": len(manifest.get("fileMap", {})),
         }
+
+    def save_checkpoint(manifest: dict, working_dir: dict, message: str, author: str) -> dict:
+        raise NotImplementedError("Native module not found. Checkpoint saving requires compiled Rust extension.")
+
+    def restore_version(manifest: dict, current_files: list, version_id: str) -> dict:
+        raise NotImplementedError("Native module not found.")
 
 __all__ = [
     "JCFManager",
@@ -56,6 +62,8 @@ __all__ = [
     "greet",
     "create_empty_manifest",
     "get_manifest_info",
+    "save_checkpoint",
+    "restore_version",
 ]
 
 __version__ = "0.1.0"
