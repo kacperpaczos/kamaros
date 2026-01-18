@@ -73,11 +73,10 @@ pub fn get_manifest_info(js_manifest: JsValue) -> Result<JsValue, JsValue> {
     Ok(info.into())
 }
 
-// Helper: Get current timestamp (simplified for WASM)
+// Helper: Get current timestamp using JS Date API
 fn current_timestamp() -> String {
-    // In WASM, we'd use js_sys::Date, but for simplicity return placeholder
-    // TypeScript can override this
-    "2024-01-01T00:00:00Z".to_string()
+    let date = js_sys::Date::new_0();
+    date.to_iso_string().as_string().unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
 }
 
 #[cfg(test)]

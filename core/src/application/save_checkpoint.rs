@@ -312,8 +312,7 @@ where
 
 // Helper functions
 fn chrono_now() -> String {
-    // Simple ISO timestamp (in real impl, use chrono crate)
-    "2024-01-01T00:00:00Z".to_string() // TODO: Use actual timestamp
+    chrono::Utc::now().to_rfc3339()
 }
 
 fn count_changes(changes: &[FileChange]) -> (usize, usize, usize) {

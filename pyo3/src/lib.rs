@@ -77,7 +77,7 @@ fn get_manifest_info(manifest: &Bound<'_, PyAny>) -> PyResult<PyObject> {
 
 // Helper: get current timestamp
 fn chrono_now() -> String {
-    "2024-01-01T00:00:00Z".to_string()
+    chrono::Utc::now().to_rfc3339()
 }
 
 /// Kamaros Python module
