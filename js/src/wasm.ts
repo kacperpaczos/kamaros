@@ -35,6 +35,16 @@ interface WasmExports {
         message: string,
         author: string
     ): Promise<SaveCheckpointResult>;
+    restore_version(
+        manifest: unknown,
+        storage: JsStorageAdapter,
+        version_id: string
+    ): Promise<{
+        manifest: Record<string, unknown>;
+        restoredVersionId: string;
+        filesRestored: number;
+        filesDeleted: number;
+    }>;
 }
 
 let wasmModule: WasmExports | null = null;
@@ -66,6 +76,7 @@ export async function initWasm(): Promise<WasmExports> {
             parse_manifest: wasm.parse_manifest,
             get_manifest_info: wasm.get_manifest_info,
             save_checkpoint: wasm.save_checkpoint,
+            restore_version: wasm.restore_version,
         };
 
         return wasmModule;

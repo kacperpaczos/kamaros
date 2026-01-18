@@ -81,12 +81,15 @@ export class JCFManager {
 
         this.manifest = this.normalizeManifest(rawManifest);
 
-        // Load working directory (/content/)
+        // Load working directory and store
         this.workingDir.clear();
         for (const [filePath, fileData] of Object.entries(unzipped)) {
             if (filePath.startsWith('content/')) {
                 const relativePath = filePath.slice('content/'.length);
                 this.workingDir.set(relativePath, fileData as Uint8Array);
+            } else if (filePath.startsWith('.store/')) {
+                // Keep .store files in workingDir but they will be filtered in listFiles
+                this.workingDir.set(filePath, fileData as Uint8Array);
             }
         }
     }
@@ -108,9 +111,13 @@ export class JCFManager {
             'manifest.json': strToU8(JSON.stringify(this.manifest, null, 2)),
         };
 
-        // Add working directory files
+        // Add files
         for (const [filePath, data] of this.workingDir) {
-            files[`content/${filePath}`] = data;
+            if (filePath.startsWith('.store/')) {
+                files[filePath] = data;
+            } else {
+                files[`content/${filePath}`] = data;
+            }
         }
 
         // Create ZIP
@@ -161,10 +168,10 @@ export class JCFManager {
     }
 
     /**
-     * List all files in working directory
+     * List all files in working directory (excludes .store/)
      */
     listFiles(): string[] {
-        return Array.from(this.workingDir.keys());
+        return Array.from(this.workingDir.keys()).filter(p => !p.startsWith('.store/'));
     }
 
     /**
@@ -230,6 +237,35 @@ export class JCFManager {
     }
 
     /**
+     * Restore version (checkout)
+     */
+    async restoreVersion(versionId: string): Promise<void> {
+        if (!this.manifest) {
+            throw new Error('No project loaded.');
+        }
+
+        const wasm = getWasm();
+        const wasmStorageAdapter = this.createWasmStorageAdapter();
+        const wasmManifest = this.toWasmManifest(this.manifest);
+
+        try {
+            const result = await wasm.restore_version(
+                wasmManifest,
+                wasmStorageAdapter,
+                versionId
+            ) as {
+                manifest: Record<string, unknown>;
+                restoredVersionId: string;
+            };
+
+            // Update local manifest
+            this.manifest = this.normalizeManifest(result.manifest);
+        } catch (e) {
+            throw new Error(`restoreVersion failed: ${e}`);
+        }
+    }
+
+    /**
      * Create a WASM-compatible storage adapter from workingDir
      * This adapter provides read/write/delete/exists/list methods
      */
@@ -238,7 +274,12 @@ export class JCFManager {
 
         return {
             async read(path: string): Promise<Uint8Array> {
-                // Remove 'content/' prefix if present
+                // Handle content/ vs .store/ paths
+                // If path starts with content/, strip it.
+                // If path starts with .store/, keep it?
+                // logic:
+                // path: "content/file.txt" -> "file.txt"
+                // path: ".store/blobs/x" -> ".store/blobs/x"
                 const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
                 const data = workingDir.get(cleanPath);
                 if (!data) {
@@ -264,13 +305,27 @@ export class JCFManager {
 
             async list(dir: string): Promise<string[]> {
                 // Return all keys that would be under the dir
-                const prefix = dir.startsWith('content/') ? '' : '';
+                // Dir: "content/" -> return "file.txt"
+                // Dir: ".store/" -> return "blobs/x" ?
+                // The iteration over workingDir keys:
+                // "file.txt" -> matches content/
+                // ".store/blobs/x" -> matches .store/
+
+                const prefix = dir.startsWith('content/') ? '' : dir;
+                // If dir is content/, we want files that do NOT start with .store
+                const isContent = dir.startsWith('content/') || dir === '';
+
                 const files: string[] = [];
                 for (const key of workingDir.keys()) {
-                    if (dir === 'content/' || dir === '') {
-                        files.push(key);
-                    } else if (key.startsWith(prefix)) {
-                        files.push(key);
+                    if (key.startsWith('.store/')) {
+                        if (!isContent && key.startsWith(prefix)) {
+                            files.push(key);
+                        }
+                    } else {
+                        // It's a content file
+                        if (isContent) {
+                            files.push(key);
+                        }
                     }
                 }
                 return files;
