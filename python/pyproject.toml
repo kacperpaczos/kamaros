@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.4,<2"]
+build-backend = "maturin"
+
+[project]
+name = "kamaros"
+version = "0.1.0"
+description = "Python library for Kamaros JCF Format - intelligent ZIP with Time-Travel versioning"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+keywords = ["kamaros", "jcf", "versioning", "time-travel", "zip"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/kacperpaczos/kamaros"
+Repository = "https://github.com/kacperpaczos/kamaros"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "kamaros._native"
+manifest-path = "../pyo3/Cargo.toml"

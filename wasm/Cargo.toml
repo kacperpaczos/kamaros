@@ -1,0 +1,23 @@
+[package]
+name = "kamaros-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "WASM bindings for Kamaros JCF Manager"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+kamaros-corelib = { path = "../core" }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+opt-level = "z"
+lto = true
