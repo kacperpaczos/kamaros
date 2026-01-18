@@ -6,8 +6,24 @@ from typing import Optional, Dict, Any
 import zipfile
 import json
 import io
+from datetime import datetime
 
-from . import create_empty_manifest
+
+def _create_empty_manifest(project_name: str) -> dict:
+    """Create an empty manifest (internal helper)."""
+    now = datetime.now().isoformat()
+    return {
+        "format_version": "1.0.0",
+        "metadata": {
+            "name": project_name,
+            "created": now,
+            "last_modified": now,
+        },
+        "file_map": {},
+        "version_history": [],
+        "refs": {"head": ""},
+        "rename_log": [],
+    }
 
 
 class JCFManager:
@@ -28,7 +44,7 @@ class JCFManager:
     
     def create_project(self, name: str, description: Optional[str] = None, author: Optional[str] = None) -> None:
         """Create a new empty project."""
-        self.manifest = create_empty_manifest(name)
+        self.manifest = _create_empty_manifest(name)
         if description:
             self.manifest["metadata"]["description"] = description
         if author:
