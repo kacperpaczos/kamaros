@@ -4,6 +4,11 @@ pub mod blob;
 // pub mod patch;
 
 #[cfg(test)]
+mod manifest_test;
+#[cfg(test)]
+mod version_test;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
