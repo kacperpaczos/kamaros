@@ -105,3 +105,7 @@ Adapter Pattern - ten sam kod działa wszędzie:
 - Browser (IndexedDB)
 - Node.js (fs)
 - Tauri (tauri.fs)
+
+## Obsługa Warstw
+
+Format umożliwia niezależne dodawanie treści do wybranych warstw, co pozwala na logiczną separację danych wewnątrz jednego kontenera.
