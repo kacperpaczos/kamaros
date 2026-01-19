@@ -22,9 +22,15 @@ export * from './types';
 // Main API
 export { JCFManager } from './api/JCFManager';
 
-// Adapters
-export { NodeAdapter } from './adapters/NodeAdapter';
+// Adapters - Universal
 export { MemoryAdapter } from './adapters/MemoryAdapter';
+
+// Adapters - Node.js
+export { NodeAdapter } from './adapters/NodeAdapter';
+
+// Adapters - Browser
+export { IndexedDBAdapter } from './adapters/IndexedDBAdapter';
+export { OPFSAdapter } from './adapters/OPFSAdapter';
 
 // WASM utilities (lazy loaded)
 export { initWasm, getWasm } from './wasm';

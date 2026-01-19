@@ -3,10 +3,9 @@
 ## 🔴 Priorytet WYSOKI
 
 ### Browser Adapters
-- [ ] `IndexedDBAdapter` dla przeglądarek
-- [ ] `OPFSAdapter` (Origin Private File System)
-
-### Publikacja
+- [x] `IndexedDBAdapter` dla przeglądarek
+- [x] `OPFSAdapter` (Origin Private File System)
+- [ ] Testy w przeglądarce (Playwright)
 - [ ] Dokumentacja na docs.rs
 
 ---
