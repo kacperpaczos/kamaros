@@ -4,9 +4,23 @@
 
 ## Browser
 
+### IndexedDB (Standard)
+Best for general compatibility.
+
 ```typescript
-import { BrowserAdapter } from 'kamaros';
-const adapter = new BrowserAdapter();
+import { IndexedDBAdapter } from 'kamaros-ts';
+const adapter = new IndexedDBAdapter('my-project-scope');
+```
+
+### OPFS (High Permance)
+Best for large files, requires Secure Context (HTTPS/localhost).
+
+```typescript
+import { OPFSAdapter } from 'kamaros-ts';
+
+if (OPFSAdapter.isAvailable()) {
+    const adapter = new OPFSAdapter('my-project-scope');
+}
 ```
 
 ## Node.js

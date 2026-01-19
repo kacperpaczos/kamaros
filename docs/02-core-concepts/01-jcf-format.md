@@ -214,6 +214,16 @@ Zapisane:
 1. /content/src/index.js (v2, pełny)
 2. /.store/deltas/v1_3a2f1b4e5c6d7e8f.patch
 
+## Obsługa Warstw (Layers)
+
+Format obsługuje koncepcję warstw, umożliwiając niezależne zarządzanie grupami treści.
+
+### Niezależność warstw
+
+- Do wybranej warstwy można wkładać treści (pliki) niezależnie od innych warstw.
+- Warstwy pozwalają na logiczną separację danych (np. warstwa aplikacji, warstwa użytkownika, warstwa systemowa).
+- Operacje na jednej warstwie nie muszą wpływać na strukturę lub zawartość innych warstw.
+
 ## Kompresja i optymalizacja
 
 ### Poziomy kompresji

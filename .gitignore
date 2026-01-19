@@ -146,3 +146,5 @@ target/
 __pycache__/
 *.py[cod]
 .store/
+js/test-results/
+package-lock.json

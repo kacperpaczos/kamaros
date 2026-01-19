@@ -4,15 +4,6 @@
 
 [JCF - JSON Content Format](docs/01-introduction/01-overview.md) to inteligentny format pliku oparty na standardowym ZIP archive, zaprojektowany do przechowywania projektów z pełną historią wersji.
 
-## 🚀 Biblioteka wielojęzyczna
-
-| Paczka | Platforma | Status |
-|--------|-----------|--------|
-| `kamaros-corelib` | Rust | ✅ Zaimplementowane |
-| `kamaros-wasm` | WASM | ✅ Zaimplementowane |
-| `kamaros-ts` | npm | ✅ Zaimplementowane |
-| `kamaros-py` | PyPI | ✅ Zaimplementowane |
-
 ## ⚡ Quick Start
 
 ### TypeScript (npm)
@@ -66,6 +57,7 @@ cd wasm && wasm-pack build --target web
 - **Reverse Delta**: Efektywne wersjonowanie plików tekstowych
 - **Izomorficzny**: Przeglądarka, Node.js, Tauri, Python
 - **Streaming**: Obsługa plików >500MB bez ładowania do RAM
+- **Warstwy (Layers)**: Możliwość niezależnego dodawania treści do wybranych warstw
 
 ## 📁 Struktura projektu
 
