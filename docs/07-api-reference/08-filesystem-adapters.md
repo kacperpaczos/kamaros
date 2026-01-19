@@ -84,49 +84,55 @@ interface FileSystemAdapter {
 
 ## Wbudowane adaptery
 
-### BrowserAdapter
+### IndexedDBAdapter
+ 
+ Adapter dla przeglądarek internetowych używający API IndexedDB. Zapewnia szeroką kompatybilność i trwałe przechowywanie.
+ 
+ #### Funkcjonalności
+ - ✅ Trwałe przechowywanie danych (Persistent Storage)
+ - ✅ Szerokie wsparcie (praktycznie każda nowoczesna przeglądarka)
+ - ✅ Izolacja per domena
+ 
+ #### Ograniczenia
+ - ❌ Wolniejszy niż OPFS dla dużych plików
+ - ❌ Operacje binarne mogą być kosztowne pamięciowo
+ 
+ #### Przykład użycia
+ 
+ ```typescript
+ import { JCFManager, IndexedDBAdapter } from 'kamaros-ts';
+ 
+ const manager = await JCFManager.create(new IndexedDBAdapter('my-project'));
+ await manager.createProject("MyProject");
+ ```
 
-Adapter dla przeglądarek internetowych używający IndexedDB i File API.
-
-#### Funkcjonalności
-- ✅ IndexedDB dla przechowywania metadanych
-- ✅ File API dla obsługi dużych plików
-- ✅ Web Streams API
-- ✅ Web Workers dla operacji CPU-intensywnych
-- ✅ Kompresja przez WebAssembly
-
-#### Ograniczenia
-- ❌ Maksymalny rozmiar pliku: ~500MB (zależy od przeglądarki)
-- ❌ Brak dostępu do systemu plików
-- ❌ Ograniczona przestrzeń dyskowa
-
-#### Przykład użycia
-
-```typescript
-import { JCFManager, BrowserAdapter } from 'jcf-manager';
-
-const manager = new JCFManager();
-const adapter = new BrowserAdapter({
-  dbName: 'my-project-db',
-  storeName: 'jcf-files',
-  maxFileSize: 100 * 1024 * 1024 // 100MB
-});
-
-await manager.init(adapter);
-```
-
-#### Konfiguracja
-
-```typescript
-interface BrowserAdapterOptions {
-  dbName?: string;              // Nazwa bazy IndexedDB
-  storeName?: string;           // Nazwa object store
-  maxFileSize?: number;         // Max rozmiar pliku (bytes)
-  chunkSize?: number;           // Rozmiar chunków (bytes)
-  enableCompression?: boolean;  // Włącz kompresję
-  workerPath?: string;          // Ścieżka do worker script
-}
-```
+ ### OPFSAdapter (Origin Private File System)
+ 
+ Adapter wykorzystujący nowoczesne API File System Access API (OPFS) dla maksymalnej wydajności w przeglądarce. 
+ Wymaga bezpiecznego kontekstu (HTTPS lub localhost).
+ 
+ #### Funkcjonalności
+ - ✅ Najwyższa wydajność I/O w przeglądarce
+ - ✅ Dostęp do "prawdziwych" plików w prywatnym sandboksie przeglądarki
+ - ✅ Efektywne operacje na plikach binarnych
+ 
+ #### Ograniczenia
+ - ❌ Wymaga Secure Context (HTTPS/localhost)
+ - ❌ Mniejsze wsparcie w starszych przeglądarkach (głównie Chromium/Firefox/Safari modern)
+ - ❌ Trudniejszy debugging (pliki są ukryte wewnątrz przeglądarki)
+ 
+ #### Przykład użycia
+ 
+ ```typescript
+ import { JCFManager, OPFSAdapter } from 'kamaros-ts';
+ 
+ if (OPFSAdapter.isAvailable()) {
+     const manager = await JCFManager.create(new OPFSAdapter('my-project'));
+ } else {
+     // Fallback to IndexedDB
+     const manager = await JCFManager.create(new IndexedDBAdapter('my-project'));
+ }
+ ```
 
 ### NodeAdapter
 

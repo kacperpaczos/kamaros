@@ -5,7 +5,7 @@
 ### Browser Adapters
 - [x] `IndexedDBAdapter` dla przeglądarek
 - [x] `OPFSAdapter` (Origin Private File System)
-- [ ] Testy w przeglądarce (Playwright)
+- [x] Testy w przeglądarce (Playwright)
 - [ ] Dokumentacja na docs.rs
 
 ---
