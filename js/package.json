@@ -23,6 +23,7 @@
         "build:ts": "esbuild src/index.ts --bundle --outfile=dist/index.js --format=esm --platform=neutral --external:fs --external:path && esbuild src/index.ts --bundle --outfile=dist/index.cjs --format=cjs --platform=node && tsc --emitDeclarationOnly",
         "typecheck": "tsc --noEmit",
         "test": "vitest",
+        "test:e2e": "playwright test",
         "prepublishOnly": "npm run build"
     },
     "keywords": [
@@ -44,8 +45,10 @@
         "fflate": "^0.8.2"
     },
     "devDependencies": {
+        "@playwright/test": "^1.57.0",
         "@types/node": "^25.0.9",
         "esbuild": "^0.20.0",
+        "playwright": "^1.57.0",
         "typescript": "^5.3.0",
         "vitest": "^1.0.0"
     },
