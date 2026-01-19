@@ -13,16 +13,16 @@ def _create_empty_manifest(project_name: str) -> dict:
     """Create an empty manifest (internal helper)."""
     now = datetime.now().isoformat()
     return {
-        "format_version": "1.0.0",
+        "formatVersion": "1.0.0",
         "metadata": {
             "name": project_name,
             "created": now,
-            "last_modified": now,
+            "lastModified": now,
         },
-        "file_map": {},
-        "version_history": [],
+        "fileMap": {},
+        "versionHistory": [],
         "refs": {"head": ""},
-        "rename_log": [],
+        "renameLog": [],
     }
 
 
@@ -75,7 +75,7 @@ class JCFManager:
         
         # Update timestamp
         from datetime import datetime
-        self.manifest["metadata"]["last_modified"] = datetime.now().isoformat()
+        self.manifest["metadata"]["lastModified"] = datetime.now().isoformat()
         
         # Create ZIP in memory
         buffer = io.BytesIO()
@@ -104,15 +104,15 @@ class JCFManager:
         import uuid
         
         now = datetime.now().isoformat()
-        if path not in self.manifest["file_map"]:
-            self.manifest["file_map"][path] = {
-                "inode_id": str(uuid.uuid4()),
+        if path not in self.manifest["fileMap"]:
+            self.manifest["fileMap"][path] = {
+                "inodeId": str(uuid.uuid4()),
                 "type": "text" if self._is_text_file(path) else "binary",
                 "created": now,
                 "modified": now,
             }
         else:
-            self.manifest["file_map"][path]["modified"] = now
+            self.manifest["fileMap"][path]["modified"] = now
     
     def get_file(self, path: str) -> Optional[bytes]:
         """Get a file from working directory."""
@@ -122,8 +122,7 @@ class JCFManager:
         """Delete a file from working directory."""
         if path in self.working_dir:
             del self.working_dir[path]
-            if self.manifest and path in self.manifest["file_map"]:
-                del self.manifest["file_map"][path]
+            # save_checkpoint will handle fileMap update
             return True
         return False
     
@@ -141,10 +140,88 @@ class JCFManager:
             return None
         return {
             "name": self.manifest["metadata"]["name"],
-            "version_count": len(self.manifest["version_history"]),
-            "file_count": len(self.manifest["file_map"]),
+            "version_count": len(self.manifest["versionHistory"]),
+            "file_count": len(self.manifest["fileMap"]),
         }
     
+    def save_checkpoint(self, message: str, author: str = "unknown") -> str:
+        """
+        Create a new version (checkpoint) of the project.
+        Uses native Rust implementation for performance.
+        """
+        if self.manifest is None:
+            raise ValueError("No project loaded. Call create_project() or load() first.")
+            
+        import kamaros
+        
+        result = kamaros.save_checkpoint(
+            self.manifest,
+            self.working_dir,
+            message,
+            author
+        )
+        
+        # Persist blobs (snapshot storage)
+        if "blobs" in result:
+            for path, content in result["blobs"]:
+                # Content is [u8] from Rust, which is list of ints in Python if not PyBytes?
+                # pythonize converts Vec<u8> to list of integers usually unless configured?
+                # Actually, Vec<u8> via serde/pythonize -> list[int].
+                # We need to convert to bytes.
+                data = bytes(content)
+                self.adapter.write(path, data)
+        
+        # Update local manifest
+        self.manifest = result["manifest"]
+        
+        return result["version_id"]
+
+    def restore_version(self, version_id: str) -> str:
+        """
+        Restore project to a specific version.
+        """
+        if self.manifest is None:
+            raise ValueError("No project loaded.")
+            
+        import kamaros
+        
+        current_files = self.list_files()
+        
+        result = kamaros.restore_version(
+            self.manifest,
+            current_files,
+            version_id
+        )
+        
+        # Execute Restoration Plan
+        
+        # 1. Delete files
+        for path in result["files_to_delete"]:
+            self.delete_file(path)
+            if path in self.working_dir:
+                del self.working_dir[path]
+        
+        # 2. Restore files
+        for path, blob_ref in result["files_to_restore"].items():
+            # Read blob (handle .store prefix if needed)
+            # Rust returns full path e.g. .store/blobs/hash
+            if not self.adapter.exists(blob_ref):
+                 # Fallback check? Maybe path is relative?
+                 # My MemoryAdapter stores paths exactly as given.
+                 pass
+            
+            content = self.adapter.read(blob_ref)
+            # Convert [u8] to bytes if needed? 
+            # Adapter.read() returns bytes usually.
+            # But wait, did I implementation MemoryAdapter properly?
+            # Yes, MemoryAdapter stores bytes.
+            self.working_dir[path] = content
+            
+        # 3. Update Manifest
+        self.manifest = result["manifest"]
+        
+        return result["restored_version_id"]
+
     def _is_text_file(self, path: str) -> bool:
         """Check if file is text based on extension."""
         text_extensions = ['.txt', '.md', '.json', '.js', '.ts', '.css', '.html', '.xml', '.yaml', '.yml', '.py']

@@ -1,3 +1,6 @@
+# Personal TODO
+TODO.md
+
 # Logs
 logs
 *.log
@@ -140,3 +143,6 @@ vite.config.ts.timestamp-*
 target/
 .agent/
 .claude/
+__pycache__/
+*.py[cod]
+.store/

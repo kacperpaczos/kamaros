@@ -81,12 +81,15 @@ export class JCFManager {
 
         this.manifest = this.normalizeManifest(rawManifest);
 
-        // Load working directory (/content/)
+        // Load working directory and store
         this.workingDir.clear();
         for (const [filePath, fileData] of Object.entries(unzipped)) {
             if (filePath.startsWith('content/')) {
                 const relativePath = filePath.slice('content/'.length);
                 this.workingDir.set(relativePath, fileData as Uint8Array);
+            } else if (filePath.startsWith('.store/')) {
+                // Keep .store files in workingDir but they will be filtered in listFiles
+                this.workingDir.set(filePath, fileData as Uint8Array);
             }
         }
     }
@@ -108,9 +111,13 @@ export class JCFManager {
             'manifest.json': strToU8(JSON.stringify(this.manifest, null, 2)),
         };
 
-        // Add working directory files
+        // Add files
         for (const [filePath, data] of this.workingDir) {
-            files[`content/${filePath}`] = data;
+            if (filePath.startsWith('.store/')) {
+                files[filePath] = data;
+            } else {
+                files[`content/${filePath}`] = data;
+            }
         }
 
         // Create ZIP
@@ -161,10 +168,10 @@ export class JCFManager {
     }
 
     /**
-     * List all files in working directory
+     * List all files in working directory (excludes .store/)
      */
     listFiles(): string[] {
-        return Array.from(this.workingDir.keys());
+        return Array.from(this.workingDir.keys()).filter(p => !p.startsWith('.store/'));
     }
 
     /**
@@ -189,12 +196,179 @@ export class JCFManager {
 
     /**
      * Save checkpoint (create new version)
+     * Uses WASM save_checkpoint for change detection and version creation
      */
-    async saveCheckpoint(_message: string, _options?: SaveOptions): Promise<string> {
-        // TODO: Implement full versioning with WASM Use Cases
-        // For now, just return a placeholder
-        const versionId = crypto.randomUUID();
-        return versionId;
+    async saveCheckpoint(message: string, options?: SaveOptions): Promise<string> {
+        if (!this.manifest) {
+            throw new Error('No project loaded. Call createProject() or load() first.');
+        }
+
+        const wasm = getWasm();
+        const author = options?.author ?? 'unknown';
+
+        // Create WASM-compatible storage adapter from workingDir
+        const wasmStorageAdapter = this.createWasmStorageAdapter();
+
+        // Convert manifest to WASM format (snake_case)
+        const wasmManifest = this.toWasmManifest(this.manifest);
+
+        try {
+            // Call WASM save_checkpoint
+            const result = await wasm.save_checkpoint(
+                wasmManifest,
+                wasmStorageAdapter,
+                message,
+                author
+            ) as {
+                manifest: Record<string, unknown>;
+                versionId: string;
+                filesAdded: number;
+                filesModified: number;
+                filesDeleted: number;
+            };
+
+            // Update local manifest from WASM result
+            this.manifest = this.normalizeManifest(result.manifest);
+
+            return result.versionId;
+        } catch (e) {
+            throw new Error(`saveCheckpoint failed: ${e}`);
+        }
+    }
+
+    /**
+     * Restore version (checkout)
+     */
+    async restoreVersion(versionId: string): Promise<void> {
+        if (!this.manifest) {
+            throw new Error('No project loaded.');
+        }
+
+        const wasm = getWasm();
+        const wasmStorageAdapter = this.createWasmStorageAdapter();
+        const wasmManifest = this.toWasmManifest(this.manifest);
+
+        try {
+            const result = await wasm.restore_version(
+                wasmManifest,
+                wasmStorageAdapter,
+                versionId
+            ) as {
+                manifest: Record<string, unknown>;
+                restoredVersionId: string;
+            };
+
+            // Update local manifest
+            this.manifest = this.normalizeManifest(result.manifest);
+        } catch (e) {
+            throw new Error(`restoreVersion failed: ${e}`);
+        }
+    }
+
+    /**
+     * Create a WASM-compatible storage adapter from workingDir
+     * This adapter provides read/write/delete/exists/list methods
+     */
+    private createWasmStorageAdapter() {
+        const workingDir = this.workingDir;
+
+        return {
+            async read(path: string): Promise<Uint8Array> {
+                // Handle content/ vs .store/ paths
+                // If path starts with content/, strip it.
+                // If path starts with .store/, keep it?
+                // logic:
+                // path: "content/file.txt" -> "file.txt"
+                // path: ".store/blobs/x" -> ".store/blobs/x"
+                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
+                const data = workingDir.get(cleanPath);
+                if (!data) {
+                    throw new Error(`File not found: ${path}`);
+                }
+                return data;
+            },
+
+            async write(path: string, data: Uint8Array): Promise<void> {
+                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
+                workingDir.set(cleanPath, data);
+            },
+
+            async delete(path: string): Promise<void> {
+                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
+                workingDir.delete(cleanPath);
+            },
+
+            async exists(path: string): Promise<boolean> {
+                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
+                return workingDir.has(cleanPath);
+            },
+
+            async list(dir: string): Promise<string[]> {
+                // Return all keys that would be under the dir
+                // Dir: "content/" -> return "file.txt"
+                // Dir: ".store/" -> return "blobs/x" ?
+                // The iteration over workingDir keys:
+                // "file.txt" -> matches content/
+                // ".store/blobs/x" -> matches .store/
+
+                const prefix = dir.startsWith('content/') ? '' : dir;
+                // If dir is content/, we want files that do NOT start with .store
+                const isContent = dir.startsWith('content/') || dir === '';
+
+                const files: string[] = [];
+                for (const key of workingDir.keys()) {
+                    if (key.startsWith('.store/')) {
+                        if (!isContent && key.startsWith(prefix)) {
+                            files.push(key);
+                        }
+                    } else {
+                        // It's a content file
+                        if (isContent) {
+                            files.push(key);
+                        }
+                    }
+                }
+                return files;
+            },
+        };
+    }
+
+    /**
+     * Convert TS manifest to WASM format (snake_case keys)
+     */
+    private toWasmManifest(manifest: Manifest): Record<string, unknown> {
+        return {
+            format_version: manifest.formatVersion,
+            metadata: {
+                name: manifest.metadata.name,
+                description: manifest.metadata.description,
+                created: manifest.metadata.created,
+                last_modified: manifest.metadata.lastModified,
+                author: manifest.metadata.author,
+            },
+            file_map: Object.fromEntries(
+                Object.entries(manifest.fileMap).map(([path, entry]) => [
+                    path,
+                    {
+                        inode_id: entry.inodeId,
+                        file_type: entry.type === 'text' ? 'Text' : 'Binary',
+                        created: entry.created,
+                        modified: entry.modified,
+                        current_hash: entry.currentHash,
+                    },
+                ])
+            ),
+            version_history: manifest.versionHistory.map((v) => ({
+                id: v.id,
+                parent_id: v.parentId,
+                timestamp: v.timestamp,
+                message: v.message,
+                author: v.author,
+                file_states: v.fileStates,
+            })),
+            refs: manifest.refs,
+            rename_log: manifest.renameLog,
+        };
     }
 
     // Private helpers
