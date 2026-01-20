@@ -90,3 +90,36 @@ python examples/python/api_reference_demo.py
 | `compare_versions(v1, v2)` | ✅ | Diff between versions |
 
 All 16 API functions are implemented and tested.
+
+---
+
+## Roadmap - Planned Functions
+
+### Version Management
+| Function | Priority | Description |
+|----------|----------|-------------|
+| `tag_version(version_id, tag)` | HIGH | Tag versions (e.g. "v1.0", "release") |
+| `get_versions_by_tag(tag)` | HIGH | Find versions by tag |
+| `get_head()` | MEDIUM | Get current HEAD version |
+| `squash_versions(v1, v2)` | LOW | Merge multiple versions into one |
+
+### File Operations
+| Function | Priority | Description |
+|----------|----------|-------------|
+| `copy_file(src, dst)` | MEDIUM | Copy file with metadata |
+| `search_files(pattern)` | MEDIUM | Search files by glob pattern |
+| `get_file_size(path)` | LOW | Get file size |
+
+### Export/Import
+| Function | Priority | Description |
+|----------|----------|-------------|
+| `export_portable(path)` | HIGH | Export with blobs (fully portable archive) |
+| `export_version(version_id, dir)` | MEDIUM | Export specific version to directory |
+| `import_directory(dir)` | MEDIUM | Import directory as new project |
+
+### Maintenance
+| Function | Priority | Description |
+|----------|----------|-------------|
+| `gc()` | MEDIUM | Remove unreferenced blobs |
+| `verify_integrity()` | HIGH | Check blob hash integrity |
+| `get_storage_stats()` | LOW | Storage statistics |
