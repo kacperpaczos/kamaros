@@ -222,6 +222,203 @@ class JCFManager:
         
         return result["restored_version_id"]
 
+    def get_version_info(self, version_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed information about a specific version.
+        
+        Returns:
+            dict with: id, message, timestamp, author, parent_id, file_states
+        """
+        if self.manifest is None:
+            return None
+        
+        for version in self.manifest.get("versionHistory", []):
+            if version["id"] == version_id:
+                return {
+                    "id": version["id"],
+                    "message": version.get("message", ""),
+                    "timestamp": version.get("timestamp", ""),
+                    "author": version.get("author", "unknown"),
+                    "parent_id": version.get("parentId"),
+                    "file_states": version.get("fileStates", {}),
+                    "file_count": len(version.get("fileStates", {})),
+                }
+        return None
+
+    def get_file_at_version(self, path: str, version_id: str) -> Optional[bytes]:
+        """
+        Get file content as it was in a specific version.
+        
+        Args:
+            path: File path
+            version_id: Version ID to read from
+            
+        Returns:
+            File content as bytes, or None if not found
+        """
+        if self.manifest is None:
+            return None
+        
+        # Find version
+        version_info = self.get_version_info(version_id)
+        if version_info is None:
+            return None
+        
+        file_states = version_info.get("file_states", {})
+        if path not in file_states:
+            return None
+        
+        # Get blob reference (Rust uses contentRef, not blobRef)
+        file_state = file_states[path]
+        blob_ref = file_state.get("contentRef")
+        if not blob_ref:
+            # Fallback to blobRef for compatibility
+            blob_ref = file_state.get("blobRef")
+        if not blob_ref:
+            return None
+        
+        # Add .store prefix if needed
+        full_path = f".store/{blob_ref}" if not blob_ref.startswith(".store") else blob_ref
+        
+        # Read blob from storage
+        try:
+            return self.adapter.read(full_path)
+        except Exception:
+            return None
+
+    def rename_file(self, old_path: str, new_path: str) -> bool:
+        """
+        Rename a file with history tracking.
+        
+        The rename is logged in renameLog for tracking file identity across versions.
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        if self.manifest is None:
+            return False
+        
+        if old_path not in self.working_dir:
+            return False
+        
+        if new_path in self.working_dir:
+            return False  # Target exists
+        
+        # Move content
+        content = self.working_dir[old_path]
+        del self.working_dir[old_path]
+        self.working_dir[new_path] = content
+        
+        # Update fileMap
+        if old_path in self.manifest["fileMap"]:
+            file_entry = self.manifest["fileMap"][old_path]
+            del self.manifest["fileMap"][old_path]
+            file_entry["modified"] = datetime.now().isoformat()
+            self.manifest["fileMap"][new_path] = file_entry
+        
+        # Log rename (use field names matching Rust RenameEntry: from, to, timestamp, versionId)
+        # Note: versionId will be set on next checkpoint, for now use empty string
+        self.manifest["renameLog"].append({
+            "from": old_path,
+            "to": new_path,
+            "timestamp": datetime.now().isoformat(),
+            "versionId": "",  # Will be updated on next save_checkpoint
+        })
+        
+        return True
+
+    def get_file_history(self, path: str) -> list:
+        """
+        Get modification history of a specific file.
+        
+        Returns:
+            List of versions where this file was modified, with details
+        """
+        if self.manifest is None:
+            return []
+        
+        history = []
+        previous_blob = None
+        
+        for version in self.manifest.get("versionHistory", []):
+            file_states = version.get("fileStates", {})
+            if path in file_states:
+                current_blob = file_states[path].get("contentRef") or file_states[path].get("blobRef")
+                
+                # Check if file changed
+                if current_blob != previous_blob:
+                    history.append({
+                        "version_id": version["id"],
+                        "message": version.get("message", ""),
+                        "timestamp": version.get("timestamp", ""),
+                        "action": "created" if previous_blob is None else "modified",
+                        "blob_ref": current_blob,
+                    })
+                    previous_blob = current_blob
+            elif previous_blob is not None:
+                # File was deleted in this version
+                history.append({
+                    "version_id": version["id"],
+                    "message": version.get("message", ""),
+                    "timestamp": version.get("timestamp", ""),
+                    "action": "deleted",
+                    "blob_ref": None,
+                })
+                previous_blob = None
+        
+        return history
+
+    def compare_versions(self, v1_id: str, v2_id: str) -> Dict[str, Any]:
+        """
+        Compare two versions and return differences.
+        
+        Returns:
+            dict with:
+                - added: files added in v2
+                - removed: files removed in v2
+                - modified: files changed between v1 and v2
+                - unchanged: files same in both versions
+        """
+        if self.manifest is None:
+            return {"error": "No project loaded"}
+        
+        v1_info = self.get_version_info(v1_id)
+        v2_info = self.get_version_info(v2_id)
+        
+        if v1_info is None or v2_info is None:
+            return {"error": "Version not found"}
+        
+        v1_files = v1_info.get("file_states", {})
+        v2_files = v2_info.get("file_states", {})
+        
+        v1_paths = set(v1_files.keys())
+        v2_paths = set(v2_files.keys())
+        
+        added = list(v2_paths - v1_paths)
+        removed = list(v1_paths - v2_paths)
+        common = v1_paths & v2_paths
+        
+        modified = []
+        unchanged = []
+        
+        for path in common:
+            v1_blob = v1_files[path].get("contentRef") or v1_files[path].get("blobRef")
+            v2_blob = v2_files[path].get("contentRef") or v2_files[path].get("blobRef")
+            if v1_blob != v2_blob:
+                modified.append(path)
+            else:
+                unchanged.append(path)
+        
+        return {
+            "v1_id": v1_id,
+            "v2_id": v2_id,
+            "added": added,
+            "removed": removed,
+            "modified": modified,
+            "unchanged": unchanged,
+            "summary": f"+{len(added)} -{len(removed)} ~{len(modified)} ={len(unchanged)}"
+        }
+
     def _is_text_file(self, path: str) -> bool:
         """Check if file is text based on extension."""
         text_extensions = ['.txt', '.md', '.json', '.js', '.ts', '.css', '.html', '.xml', '.yaml', '.yml', '.py']
