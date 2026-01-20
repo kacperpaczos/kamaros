@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 import zipfile
 import json
 import io
+import os
 from datetime import datetime
 
 
@@ -67,6 +68,13 @@ class JCFManager:
                     relative_path = name[len("content/"):]
                     if relative_path:
                         self.working_dir[relative_path] = zf.read(name)
+                elif name.startswith(".store/"):
+                    # Extract blobs to storage
+                    blob_content = zf.read(name)
+                    # Use adapter to write the blob
+                    # Note: We rely on adapter to handle path creation (like os.makedirs)
+                    # FileAdapter does, MemoryAdapter does.
+                    self.adapter.write(name, blob_content)
     
     def save(self, path: str) -> None:
         """Save JCF file to storage."""
@@ -89,6 +97,21 @@ class JCFManager:
             # Write working directory
             for file_path, data in self.working_dir.items():
                 zf.writestr(f"content/{file_path}", data)
+                
+            # Write blob store (for portability)
+            # This logic depends on the adapter capabilities. 
+            # For FileAdapter, we can walk the directory.
+            # In a real generic implementation, StorageAdapter needs a list_blobs() method.
+            # Here we hack it for FileAdapter (most common case for Python).
+            if hasattr(self.adapter, 'base_path'):
+                store_path = os.path.join(self.adapter.base_path, ".store")
+                if os.path.exists(store_path):
+                    for root, _, files in os.walk(store_path):
+                        for file in files:
+                            abs_path = os.path.join(root, file)
+                            rel_path = os.path.relpath(abs_path, self.adapter.base_path)
+                            with open(abs_path, 'rb') as f:
+                                zf.writestr(rel_path, f.read())
         
         self.adapter.write(path, buffer.getvalue())
     

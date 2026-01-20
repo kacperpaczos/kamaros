@@ -1,0 +1,9 @@
+{
+    "name": "@kamaros/core-wasm",
+    "version": "0.1.0",
+    "main": "index.js",
+    "types": "index.d.ts",
+    "scripts": {
+        "build": "echo 'Run wasm-pack in /wasm directory first to generate pkg, then copy here or link'"
+    }
+}
