@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Comprehensive Kamaros Demo - Full Workflow Example
+Example 05: Comprehensive Demo
 
-This example demonstrates:
+Full workflow demonstrating:
 1. Creating a project with metadata
 2. Adding text and binary files (images from internet)
 3. Modifying files
@@ -19,8 +19,9 @@ import urllib.request
 from kamaros import JCFManager, FileAdapter
 
 # === Configuration ===
-PROJECT_STORE = "./demo-photo-album-store"
-JCF_ARCHIVE = "./photo-album.jcf"
+PROJECT_STORE = "/tmp/kamaros-example-05"
+PROJECT_STORE_LOADED = "/tmp/kamaros-example-05-loaded"
+JCF_ARCHIVE = "photo-album.jcf"
 
 
 def download_image(url: str) -> bytes:
@@ -32,10 +33,9 @@ def download_image(url: str) -> bytes:
 
 def cleanup():
     """Remove previous demo artifacts."""
-    if os.path.exists(PROJECT_STORE):
-        shutil.rmtree(PROJECT_STORE)
-    if os.path.exists(JCF_ARCHIVE):
-        os.remove(JCF_ARCHIVE)
+    for path in [PROJECT_STORE, PROJECT_STORE_LOADED]:
+        if os.path.exists(path):
+            shutil.rmtree(path)
     os.makedirs(PROJECT_STORE)
 
 
@@ -56,6 +56,11 @@ def print_history(manager: JCFManager):
 
 def main():
     cleanup()
+    print("=" * 60)
+    print("Example 05: Comprehensive Demo")
+    print("=" * 60)
+    print(f"Storage path: {PROJECT_STORE}")
+    print(f"Loaded path:  {PROJECT_STORE_LOADED}")
     
     print_separator("FAZA 1: Tworzenie projektu")
     
@@ -152,9 +157,9 @@ Album demonstracyjny dla biblioteki Kamaros.
     # =========================================================================
     print_separator("FAZA 4: Zapis do archiwum .jcf")
     
-    archive_name = "photo-album.jcf"
-    manager.save(archive_name)
-    archive_path = os.path.join(PROJECT_STORE, archive_name)
+    manager.save(JCF_ARCHIVE)
+    # Move archive to store so getsize works on absolute path or use join
+    archive_path = os.path.join(PROJECT_STORE, JCF_ARCHIVE)
     archive_size = os.path.getsize(archive_path)
     print(f"  Zapisano: {archive_path} ({archive_size:,} bytes)")
     
@@ -165,22 +170,21 @@ Album demonstracyjny dla biblioteki Kamaros.
     # =========================================================================
     print_separator("FAZA 5: Wczytanie w nowym obiekcie")
     
-    loaded_store = PROJECT_STORE + "-loaded"
-    adapter2 = FileAdapter(loaded_store)
-    os.makedirs(loaded_store, exist_ok=True)
+    os.makedirs(PROJECT_STORE_LOADED, exist_ok=True)
+    adapter2 = FileAdapter(PROJECT_STORE_LOADED)
     manager2 = JCFManager(adapter2)
     
     # Copy archive and blob storage to new adapter's location
-    shutil.copy(archive_path, os.path.join(loaded_store, archive_name))
+    shutil.copy(archive_path, os.path.join(PROJECT_STORE_LOADED, JCF_ARCHIVE))
     store_src = os.path.join(PROJECT_STORE, ".store")
-    store_dst = os.path.join(loaded_store, ".store")
+    store_dst = os.path.join(PROJECT_STORE_LOADED, ".store")
     if os.path.exists(store_src):
         if os.path.exists(store_dst):
             shutil.rmtree(store_dst)
         shutil.copytree(store_src, store_dst)
     
-    manager2.load(archive_name)
-    print(f"  Wczytano: {archive_path}")
+    manager2.load(JCF_ARCHIVE)
+    print(f"  Wczytano: {JCF_ARCHIVE}")
     
     info2 = manager2.get_project_info()
     print(f"  Projekt: {info2['name']}")

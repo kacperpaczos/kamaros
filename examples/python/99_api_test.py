@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-API Reference Demo - Tests ALL supported Kamaros functions
+Example 99: API Reference Test
 
-This demo exercises every public API function in JCFManager.
+Tests ALL 16 supported API functions in JCFManager.
+See demos.md for the full reference.
 """
 
 import os
@@ -10,7 +11,9 @@ import shutil
 import urllib.request
 from kamaros import JCFManager, FileAdapter
 
-PROJECT_STORE = "./demo-api-reference-store"
+# === Configuration ===
+PROJECT_STORE = "/tmp/kamaros-example-99"
+PROJECT_STORE_LOADED = "/tmp/kamaros-example-99-loaded"
 
 
 def download_image(url: str) -> bytes:
@@ -19,7 +22,7 @@ def download_image(url: str) -> bytes:
 
 
 def cleanup():
-    for path in [PROJECT_STORE, PROJECT_STORE + "-loaded"]:
+    for path in [PROJECT_STORE, PROJECT_STORE_LOADED]:
         if os.path.exists(path):
             shutil.rmtree(path)
     os.makedirs(PROJECT_STORE)
@@ -38,6 +41,9 @@ def test_result(name: str, passed: bool):
 
 def main():
     cleanup()
+    print("=" * 60)
+    print("Example 99: API Reference Test")
+    print("=" * 60)
     results = []
     
     section("1. create_project(name, description, author)")
@@ -128,13 +134,6 @@ def main():
     results.append(("get_file_at_version", passed))
     if old_readme:
         print(f"  README at v1: {old_readme.decode()[:50]}...")
-    else:
-        # Debug: print file_states to understand structure
-        v1_info = manager.get_version_info(v1_id)
-        print(f"  DEBUG: file_states keys: {list(v1_info.get('file_states', {}).keys())[:3]}")
-        if "README.md" in v1_info.get("file_states", {}):
-            fs = v1_info["file_states"]["README.md"]
-            print(f"  DEBUG: README.md state: {fs}")
     
     # ---
     section("10. rename_file(old_path, new_path)")
@@ -182,12 +181,11 @@ def main():
     
     # ---
     section("15. load(path) - import from .jcf")
-    loaded_store = PROJECT_STORE + "-loaded"
-    os.makedirs(loaded_store, exist_ok=True)
-    shutil.copy(archive_path, os.path.join(loaded_store, "project.jcf"))
-    shutil.copytree(os.path.join(PROJECT_STORE, ".store"), os.path.join(loaded_store, ".store"))
+    os.makedirs(PROJECT_STORE_LOADED, exist_ok=True)
+    shutil.copy(archive_path, os.path.join(PROJECT_STORE_LOADED, "project.jcf"))
+    shutil.copytree(os.path.join(PROJECT_STORE, ".store"), os.path.join(PROJECT_STORE_LOADED, ".store"))
     
-    adapter2 = FileAdapter(loaded_store)
+    adapter2 = FileAdapter(PROJECT_STORE_LOADED)
     manager2 = JCFManager(adapter2)
     manager2.load("project.jcf")
     info2 = manager2.get_project_info()

@@ -7,64 +7,31 @@ Each demo tests specific functionality of the API.
 
 ## Available Demos
 
-### 1. simple_workflow.py
+All examples are located in `examples/python/`.
 
-**Purpose**: Basic workflow test
+### `01_basic_workflow.py`
+**Basic Lifecycle**: Creates project, adds file, saves checkpoint, restores version.
+Run: `python examples/python/01_basic_workflow.py`
 
-**Tests**:
-- `create_project()` - Creating new project
-- `add_file()` - Adding files
-- `save_checkpoint()` - Creating version checkpoint
-- `restore_version()` - Restoring to previous version
-- `get_file()` - Reading file content
+### `02_file_operations.py`
+**File Management**: Demonstrates add, get, list, rename, and delete file operations.
+Run: `python examples/python/02_file_operations.py`
 
-**Run**:
-```bash
-python examples/python/simple_workflow.py
-```
+### `03_version_history.py`
+**History Browsing**: Inspects version details, file history, and diffs between versions.
+Run: `python examples/python/03_version_history.py`
 
----
+### `04_save_load_archive.py`
+**Import/Export**: Saves project to `.jcf` archive and loads it into a new manager.
+Run: `python examples/python/04_save_load_archive.py`
 
-### 2. comprehensive_demo.py
+### `05_comprehensive_demo.py`
+**Full Workflow**: A complete walkthrough with images, metadata, and rollback.
+Run: `python examples/python/05_comprehensive_demo.py`
 
-**Purpose**: Full workflow with binary files, modifications, and history
-
-**Tests**:
-- `create_project(name, description, author)` - Project with metadata
-- `add_file()` - Text and binary files (images from internet)
-- `get_file()` - Reading files
-- `delete_file()` - Removing files
-- `list_files()` - Listing working directory
-- `save_checkpoint()` - Multiple checkpoints
-- `save()` - Exporting to .jcf archive
-- `load()` - Loading from .jcf archive
-- `get_manifest()` - Accessing version history
-- `get_project_info()` - Project statistics
-- `restore_version()` - Rollback to any version
-
-**Run**:
-```bash
-python examples/python/comprehensive_demo.py
-```
-
----
-
-### 3. api_reference_demo.py
-
-**Purpose**: Complete API reference with all supported functions
-
-**Tests**:
-- All functions from comprehensive_demo
-- `get_version_info(version_id)` - Get details of specific version
-- `get_file_at_version(path, version_id)` - Read file from past version
-- `rename_file(old_path, new_path)` - Rename with history tracking
-- `get_file_history(path)` - Get modification history of file
-- `compare_versions(v1_id, v2_id)` - Diff between versions
-
-**Run**:
-```bash
-python examples/python/api_reference_demo.py
-```
+### `99_api_test.py`
+**API Reference**: Systematically tests all 16 public API functions.
+Run: `python examples/python/99_api_test.py`
 
 ---
 

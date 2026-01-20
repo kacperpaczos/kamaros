@@ -1,43 +1,43 @@
-# Kamaros Usage Examples
+# Kamaros Examples
 
-## Python
+This directory contains examples demonstrating the Kamaros library across all supported platforms.
 
-The Python examples demonstrate the Core logic binding via PyO3.
+## Structure
 
-### Prerequisites
+| Directory | Language | Status |
+|-----------|----------|--------|
+| [python/](python/) | Python 3.8+ | ✅ Complete |
+| [js/](js/) | TypeScript/JavaScript | 📋 Planned |
+| [core/](core/) | Rust | 📋 Planned |
 
-- Python 3.8+
-- Rust toolchain (for building the extension)
-- Virtual environment recommended
+## Python Examples
 
-### Running `simple_workflow.py`
+Full API demonstration with 16 functions tested:
 
-1. Create and activate a virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+| Example | Description |
+|---------|-------------|
+| `simple_workflow.py` | Basic create/save/restore workflow |
+| `comprehensive_demo.py` | Full workflow with images from internet |
+| `api_reference_demo.py` | Tests all 16 API functions |
 
-2. Install dependencies and build the package (from project root):
-   ```bash
-   pip install maturin
-   maturin develop --manifest-path python/Cargo.toml
-   # OR if running from root with pyproject.toml in python/ dir:
-   (cd python && maturin develop)
-   ```
+**Run:**
+```bash
+source .venv/bin/activate
+python examples/python/api_reference_demo.py
+```
 
-3. Run the example:
-   ```bash
-   python3 examples/python/simple_workflow.py
-   ```
+## JavaScript Examples
 
-   Expected output:
-   - Creation of `demo-project-store` directory.
-   - Initial commit of README.md.
-   - Update of README.md.
-   - Successful restoration of the initial version.
+Coming soon. Will include:
+- Node.js examples with `NodeAdapter`
+- Browser examples with `IndexedDBAdapter` and `OPFSAdapter`
 
-## TypeScript / JavaScript
+## Core (Rust) Examples
 
-Examples for the JS/TS library are located in `ts/`.
-To run them, ensure the `kamaros-ts` library is built.
+Coming soon. Will include:
+- Integration tests with Rust Core
+- WASM bindings examples
+
+---
+
+See [python/demos.md](python/demos.md) for API function reference and roadmap.
