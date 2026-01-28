@@ -61,11 +61,15 @@
 - [x] Integracja `SaveCheckpoint` / `RestoreVersion` (WASM & Python)
 - [x] Implementacja Snapshot Storage (CAS)
 - [x] Fix timestamp (`chrono`)
+- [x] Browser Adapters (`IndexedDB`, `OPFS`)
+- [x] Monorepo Split (`@kamaros/core-wasm`, `@kamaros/node`, `@kamaros/web`)
+- [x] Advanced Examples (Browser D&D, Node Server, Python Concurrency)
 
 ---
 
 INne: dodać wspracie trzymania róznych wersji (róznych hedaów) i mozlwiość przęłacznaia isę zmiedzy nimi, jeden dokument moze mieć rózne "wersje" i nie jest to coś co trzeba mergować (nie iwem jak to nazwać).
 
-Finalizacja: - [ ] npm publish `kamaros-ts`
+Finalizacja: - [ ] npm publish `@kamaros/*`
 - [ ] pip publish `kamaros`
-*Ostatnia aktualizacja: 2026-01-18*
+
+*Ostatnia aktualizacja: 2026-01-28*

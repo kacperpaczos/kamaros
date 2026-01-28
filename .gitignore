@@ -143,6 +143,7 @@ vite.config.ts.timestamp-*
 target/
 .agent/
 .claude/
+.pytest_cache/
 __pycache__/
 *.py[cod]
 .store/
@@ -154,4 +155,4 @@ python/python/kamaros/_native.cpython-310-x86_64-linux-gnu.so
 
 # Demo output directories
 demo-*-store/
-demo-*-store-loaded/
+demo-*-store-loaded/.cursor
