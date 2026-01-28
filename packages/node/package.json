@@ -1,8 +1,28 @@
 {
     "name": "@kamaros/node",
     "version": "0.1.0",
+    "description": "Node.js storage adapter for Kamaros",
+    "type": "module",
     "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "typecheck": "tsc --noEmit"
+    },
     "dependencies": {
-        "@kamaros/core-wasm": "*"
+        "@kamaros/core-wasm": "file:../core-wasm"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "typescript": "^5.3.0"
     }
 }

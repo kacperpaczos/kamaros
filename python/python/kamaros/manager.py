@@ -442,6 +442,119 @@ class JCFManager:
             "summary": f"+{len(added)} -{len(removed)} ~{len(modified)} ={len(unchanged)}"
         }
 
+    # =========================================================================
+    # ROADMAP FEATURES: Tagging & Integrity
+    # =========================================================================
+
+    def tag_version(self, version_id: str, tag_name: str) -> bool:
+        """
+        Tag a specific version with a name (e.g. 'v1.0', 'release').
+        
+        Args:
+            version_id: The version ID to tag.
+            tag_name: The tag name (must be unique).
+        
+        Returns:
+            True if successful, False if tag already exists or version not found.
+        """
+        if self.manifest is None:
+            return False
+        
+        # Verify version exists
+        version_exists = any(
+            v["id"] == version_id for v in self.manifest.get("versionHistory", [])
+        )
+        if not version_exists:
+            return False
+        
+        # Initialize tags dict if not present
+        if "tags" not in self.manifest["refs"]:
+            self.manifest["refs"]["tags"] = {}
+        
+        # Check if tag already exists
+        if tag_name in self.manifest["refs"]["tags"]:
+            return False
+        
+        self.manifest["refs"]["tags"][tag_name] = version_id
+        return True
+
+    def get_version_by_tag(self, tag_name: str) -> Optional[str]:
+        """
+        Get version ID by tag name.
+        
+        Args:
+            tag_name: The tag name to look up.
+        
+        Returns:
+            Version ID if found, None otherwise.
+        """
+        if self.manifest is None:
+            return None
+        
+        tags = self.manifest.get("refs", {}).get("tags", {})
+        return tags.get(tag_name)
+
+    def verify_integrity(self) -> Dict[str, Any]:
+        """
+        Verify all blobs have correct hashes.
+        
+        Checks that each blob in version history matches its stored hash.
+        
+        Returns:
+            Dict with 'valid' (bool), 'checked' (int), 'errors' (list of issues).
+        """
+        import hashlib
+        
+        if self.manifest is None:
+            return {"valid": False, "checked": 0, "errors": ["No manifest loaded"]}
+        
+        errors = []
+        checked = 0
+        
+        for version in self.manifest.get("versionHistory", []):
+            file_states = version.get("fileStates", {})
+            for path, state in file_states.items():
+                content_ref = state.get("contentRef") or state.get("blobRef")
+                if not content_ref:
+                    continue
+                
+                # Try to read the blob
+                try:
+                    # Handle blob paths (stored in .store/blobs but referenced as blobs/)
+                    read_path = content_ref
+                    if content_ref.startswith("blobs/") and not content_ref.startswith(".store/"):
+                         read_path = f".store/{content_ref}"
+                    
+                    blob_content = self.adapter.read(read_path)
+                    checked += 1
+                    
+                    # Extract expected hash from blob path (e.g. .store/blobs/sha256-xxx)
+                    if "sha256-" in content_ref:
+                        expected_hash = content_ref.split("sha256-")[-1]
+                        actual_hash = hashlib.sha256(blob_content).hexdigest()
+                        
+                        if actual_hash != expected_hash:
+                            errors.append({
+                                "version": version["id"],
+                                "path": path,
+                                "expected": expected_hash[:16] + "...",
+                                "actual": actual_hash[:16] + "...",
+                                "error": "Hash mismatch"
+                            })
+                except Exception as e:
+                    errors.append({
+                        "version": version["id"],
+                        "path": path,
+                        "blob": content_ref,
+                        "error": f"Read error: {e}"
+                    })
+        
+        return {
+            "valid": len(errors) == 0,
+            "checked": checked,
+            "errors": errors
+        }
+
     def _is_text_file(self, path: str) -> bool:
         """Check if file is text based on extension."""
         text_extensions = ['.txt', '.md', '.json', '.js', '.ts', '.css', '.html', '.xml', '.yaml', '.yml', '.py']
