@@ -148,3 +148,10 @@ __pycache__/
 .store/
 js/test-results/
 package-lock.json
+
+.venv/
+python/python/kamaros/_native.cpython-310-x86_64-linux-gnu.so
+
+# Demo output directories
+demo-*-store/
+demo-*-store-loaded/

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kamaros Browser Demo</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+    }
+
+    #output {
+      background: #f0f0f0;
+      padding: 15px;
+      border-radius: 5px;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+
+    .success {
+      color: green;
+    }
+
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Kamaros Browser Demo</h1>
+  <p>Using OPFS (Origin Private File System)</p>
+
+  <div id="controls">
+    <button id="btn-init">1. Init Project</button>
+    <button id="btn-save" disabled>3. Save Snapshot</button>
+  </div>
+
+  <div id="drop-zone"
+    style="border: 2px dashed #ccc; padding: 20px; margin: 20px 0; text-align: center; border-radius: 10px;">
+    Drop files here to add them to Kamaros
+  </div>
+
+  <h3>Files in Project:</h3>
+  <ul id="file-list"></ul>
+
+  <h3>Log:</h3>
+  <div id="output">Ready...</div>
+
+  <script type="module" src="/main.ts"></script>
+</body>
+
+</html>

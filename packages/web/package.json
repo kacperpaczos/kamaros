@@ -1,0 +1,27 @@
+{
+    "name": "@kamaros/web",
+    "version": "0.1.0",
+    "description": "Browser storage adapters (OPFS, IndexedDB) for Kamaros",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsc",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@kamaros/core-wasm": "file:../core-wasm"
+    },
+    "devDependencies": {
+        "typescript": "^5.3.0"
+    }
+}

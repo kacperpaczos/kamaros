@@ -1,0 +1,13 @@
+{
+    "name": "kamaros-node-example",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "dependencies": {
+        "@kamaros/node": "file:../../../packages/node",
+        "tsx": "^4.7.0"
+    },
+    "scripts": {
+        "start": "tsx index.ts"
+    }
+}

@@ -1,0 +1,28 @@
+{
+    "name": "@kamaros/core-wasm",
+    "version": "0.1.0",
+    "description": "Core WASM bindings and JCFManager for Kamaros JCF format",
+    "type": "module",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "import": "./dist/index.js",
+            "types": "./dist/index.d.ts"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "prebuild": "mkdir -p src/wasm-bindgen && cp ../../wasm/pkg/kamaros_wasm* src/wasm-bindgen/",
+        "build": "npm run prebuild && tsc && cp -r src/wasm-bindgen dist/",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "fflate": "^0.8.2"
+    },
+    "devDependencies": {
+        "typescript": "^5.3.0"
+    }
+}
