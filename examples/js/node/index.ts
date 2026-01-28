@@ -1,0 +1,41 @@
+import { JCFManager, NodeAdapter } from '@kamaros/node';
+import path from 'path';
+import fs from 'fs/promises';
+
+async function main() {
+    const projectDir = path.resolve('test-project');
+
+    // Clean up previous run
+    try {
+        await fs.rm(projectDir, { recursive: true, force: true });
+    } catch { }
+
+    console.log('🚀 Initializing Kamaros Node Example...');
+
+    // Initialize Manager with NodeAdapter
+    // This will store files in ./test-project/.store/
+    const adapter = new NodeAdapter(projectDir);
+    const manager = await JCFManager.create(adapter);
+
+    // 1. Create Project
+    console.log('📦 Creating project...');
+    await manager.createProject("NodeDemo", { description: "A demo project running on Node.js" });
+
+    // 2. Add some files
+    console.log('📝 Adding files...');
+    const content = new TextEncoder().encode("Hello from Node.js!");
+    await manager.addFile("hello.txt", content);
+
+    // 3. Save snapshot (commit)
+    console.log('💾 Saving snapshot...');
+    const versionId = await manager.saveCheckpoint("Initial commit");
+    console.log(`✅ Snapshot saved! Version: ${versionId}`);
+
+    // 4. Verify file exists on disk (simulated check)
+    const files = await manager.listFiles();
+    console.log('📂 Files in project:', files);
+
+    console.log('🎉 Done!');
+}
+
+main().catch(console.error);
