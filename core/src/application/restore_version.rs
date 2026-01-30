@@ -4,8 +4,7 @@
 //! Uses reverse delta strategy: applies patches backwards from HEAD.
 
 use crate::domain::manifest::{FileType, Manifest};
-use crate::domain::version::Version;
-use crate::ports::{DiffPort, PortResult, StoragePort, PortError};
+use crate::ports::{DiffPort, EncryptionPort, PortResult, StoragePort, PortError};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Input for RestoreVersion use case
@@ -13,10 +12,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 pub struct RestoreVersionInput {
     pub target_version_id: String,
     pub force: bool, // Skip dirty check
+    pub encryption_key: Option<Vec<u8>>,
 }
 
 /// Output of RestoreVersion use case
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct RestoreVersionOutput {
     pub restored_version_id: String,
     pub files_restored: usize,
@@ -24,22 +24,25 @@ pub struct RestoreVersionOutput {
 }
 
 /// RestoreVersion Use Case
-pub struct RestoreVersionUseCase<S, D>
+pub struct RestoreVersionUseCase<S, D, E>
 where
     S: StoragePort,
     D: DiffPort,
+    E: EncryptionPort,
 {
     storage: S,
     diff: D,
+    encryptor: E,
 }
 
-impl<S, D> RestoreVersionUseCase<S, D>
+impl<S, D, E> RestoreVersionUseCase<S, D, E>
 where
     S: StoragePort,
     D: DiffPort,
+    E: EncryptionPort,
 {
-    pub fn new(storage: S, diff: D) -> Self {
-        Self { storage, diff }
+    pub fn new(storage: S, diff: D, encryptor: E) -> Self {
+        Self { storage, diff, encryptor }
     }
 
     /// Execute the restore version algorithm
@@ -106,14 +109,35 @@ where
             let is_text = file_entry.map(|e| matches!(e.file_type, FileType::Text)).unwrap_or(false);
 
             if is_text {
-                // For text files: apply patches backwards through version path
-                let content = self.restore_text_file(manifest, path, &path, target_id).await?;
-                self.storage.write(&format!("content/{}", path), content.as_bytes()).await?;
-                patches_applied += 1;
+                // Try reading from blob first (Fast Path / Full History enabled)
+                if let Some(hash) = &target_state.hash {
+                    let mut blob_content = self.storage.read(&format!(".store/blobs/{}", hash)).await?;
+                    
+                    if target_state.encrypted.unwrap_or(false) {
+                         let key = input.encryption_key.as_ref()
+                            .ok_or_else(|| PortError::EncryptionError("Key required for encrypted content".into()))?;
+                         blob_content = self.encryptor.decrypt(key, &blob_content).await?;
+                    }
+                    
+                    self.storage.write(&format!("content/{}", path), &blob_content).await?;
+                    files_restored += 1;
+                } else {
+                     // Fallback to patches if no blob (Legacy/Optimization)
+                     let content = self.restore_text_file(manifest, path, &path, target_id, &input.encryption_key).await?;
+                     self.storage.write(&format!("content/{}", path), content.as_bytes()).await?;
+                     patches_applied += 1;
+                }
             } else {
                 // For binary files: fetch from CAS
                 if let Some(hash) = &target_state.hash {
-                    let blob_content = self.storage.read(&format!(".store/blobs/{}", hash)).await?;
+                    let mut blob_content = self.storage.read(&format!(".store/blobs/{}", hash)).await?;
+                    
+                    if target_state.encrypted.unwrap_or(false) {
+                        let key = input.encryption_key.as_ref()
+                            .ok_or_else(|| PortError::EncryptionError("Key required for encrypted content".into()))?;
+                        blob_content = self.encryptor.decrypt(key, &blob_content).await?;
+                    }
+                    
                     self.storage.write(&format!("content/{}", path), &blob_content).await?;
                 }
             }
@@ -130,8 +154,14 @@ where
             }
         }
 
-        // Step 5: Update HEAD reference
+        // Step 5: Update HEAD reference and file entry flags in manifest
         manifest.refs.insert("head".to_string(), target_id.clone());
+        for (path, state) in &target_version.file_states {
+            if let Some(entry) = manifest.file_map.get_mut(path) {
+                entry.current_hash = state.hash.clone();
+                entry.encrypted = state.encrypted;
+            }
+        }
 
         Ok(RestoreVersionOutput {
             restored_version_id: target_id.clone(),
@@ -190,44 +220,66 @@ where
         Ok(vec![])
     }
 
-    /// Restore text file content by applying patches through version chain
+    /// Restore text file content by reconstructing from patches
     async fn restore_text_file(
         &self,
         manifest: &Manifest,
         file_path: &str,
         _current_path: &str,
         target_version_id: &str,
+        encryption_key: &Option<Vec<u8>>,
     ) -> PortResult<String> {
-        // Start with current content from HEAD
-        let head_content = self.storage.read(&format!("content/{}", file_path)).await?;
-        let mut content = String::from_utf8_lossy(&head_content).to_string();
+        // Collect patch chain: Target -> Parent -> ... -> Base
+        let mut patches = Vec::new();
+        let mut current_id = Some(target_version_id.to_string());
 
-        // Get version path from HEAD to target
-        let head_id = manifest.refs.get("head").cloned().unwrap_or_default();
-        let path = self.find_version_path(manifest, &head_id, target_version_id)?;
-
-        // Apply patches for each version in path
-        for version_id in &path {
-            if version_id == target_version_id {
-                break;
-            }
-
-            // Find the patch for this file in this version
-            let version = manifest.version_history
-                .iter()
-                .find(|v| &v.id == version_id);
-
+        while let Some(id) = current_id {
+            let version = manifest.version_history.iter().find(|v| v.id == id);
+            
             if let Some(version) = version {
                 if let Some(file_state) = version.file_states.get(file_path) {
-                    if let Some(ref patch_ref) = file_state.content_ref {
-                        // Read and apply patch
-                        if self.storage.exists(patch_ref).await? {
-                            let patch_data = self.storage.read(patch_ref).await?;
-                            let patch_str = String::from_utf8_lossy(&patch_data);
-                            content = self.diff.apply_patch(&content, &patch_str)?;
-                        }
+                    // Check if file is deleted in this version (breaks chain)
+                    if file_state.deleted.unwrap_or(false) {
+                        break;
                     }
+
+                    if let Some(ref patch_ref) = file_state.content_ref {
+                        // Store patch info
+                        patches.push((patch_ref.clone(), file_state.encrypted.unwrap_or(false)));
+                    } else {
+                        // If no content_ref (and not deleted), maybe it's full content or glitch?
+                        // In SaveCheckpoint text files always get content_ref (patch).
+                        // If it's binary treated as text?
+                        // Assume patch is mandatory for text.
+                    }
+                    
+                    // Move to parent
+                    current_id = version.parent_id.clone();
+                } else {
+                    // File not in this version (added in child?)
+                    // Stop chain
+                    break;
                 }
+            } else {
+                break;
+            }
+        }
+
+        // Apply patches from Base (end of list) to Target (start of list)
+        let mut content = String::new();
+        
+        for (patch_ref, encrypted) in patches.iter().rev() {
+            if self.storage.exists(patch_ref).await? {
+                let mut patch_data = self.storage.read(patch_ref).await?;
+                
+                if *encrypted {
+                    let key = encryption_key.as_ref()
+                        .ok_or_else(|| PortError::EncryptionError("Key required for encrypted patch".into()))?;
+                    patch_data = self.encryptor.decrypt(key, &patch_data).await?;
+                }
+                
+                let patch_str = String::from_utf8_lossy(&patch_data);
+                content = self.diff.apply_patch(&content, &patch_str)?;
             }
         }
 

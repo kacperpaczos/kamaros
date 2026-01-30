@@ -8,6 +8,8 @@ Built with **Rust** and **WebAssembly**, Kamaros provides a unified, efficient s
 
 - **Universal Core**: Business logic implementation in Rust, compiled to WebAssembly for consistent behavior across all platforms.
 - **Content-Addressable Storage (CAS)**: Automatic deduplication of file content. Identical files stored in different versions or locations occupy space only once.
+- **Security at Rest**: Optional AES-GCM encryption for all content and history. Keys are derived using PBKDF2, ensuring data is secure even if the storage backend is compromised.
+- **Interoperability**: Built-in support for exporting/importing projects as standard ZIP archives, enabling easy data portability.
 - **Storage Agnostic**: Decoupled storage adapters allow running effectively on:
     - **Browser**: Origin Private File System (OPFS) for high-performance web storage.
     - **Node.js**: Native filesystem access.
@@ -31,45 +33,63 @@ pip install kamaros
 
 ## Quick Start
 
-### Node.js
+### Node.js (with Encryption & ZIP)
 ```typescript
 import { JCFManager, NodeAdapter } from '@kamaros/node';
 
-// Initialize with a local directory path
+// Initialize
 const adapter = new NodeAdapter('./my-data-store');
 const manager = await JCFManager.create(adapter);
 
-// Create a versioned project
-await manager.createProject("MyProject", { description: "Versioned Data" });
+// Create Project
+await manager.createProject("MyProject");
 
-// Add files and commit
-await manager.addFile("config.json", new TextEncoder().encode('{"version": 1}'));
-const v1 = await manager.saveCheckpoint("Initial configuration");
+// 1. Add files
+await manager.addFile("secret.txt", new TextEncoder().encode("Top Secret Data"));
 
-console.log(`Saved version: ${v1}`);
+// 2. Derive Key (optional, for encryption)
+const salt = crypto.getRandomValues(new Uint8Array(16));
+const key = await manager.deriveKey("my-password", salt);
+
+// 3. Save Encrypted Checkpoint
+const v1 = await manager.saveCheckpoint("Initial encrypted commit", { 
+    encryptionKey: key 
+});
+console.log(`Saved encrypted version: ${v1}`);
+
+// 4. Export to ZIP
+const zipData = await manager.exportZip();
+console.log(`Exported ZIP size: ${zipData.length} bytes`);
 ```
 
 ### Browser (OPFS)
 ```typescript
 import { JCFManager, OPFSAdapter } from '@kamaros/web';
 
-// Initialize using high-performance Origin Private File System
 const adapter = new OPFSAdapter();
 const manager = await JCFManager.create(adapter);
+await manager.load(); // Load existing project if any
 ```
 
 ### Python
 ```python
 from kamaros import JCFManager, FileAdapter
+import os
 
 manager = JCFManager(FileAdapter("./my-data-store"))
 manager.create_project("MyProject")
 
 manager.add_file("data.txt", b"Important Data")
-version_id = manager.save_checkpoint("Snapshot 1")
 
-# Rollback to previous state
-manager.restore_version(version_id)
+# Save with Encryption
+salt = os.urandom(16)
+key = manager.derive_key("password123", salt)
+version_id = manager.save_checkpoint("Snapshot 1", encryption_key=key)
+
+# Export ZIP
+zip_bytes = manager.export_zip()
+with open("project.zip", "wb") as f:
+    f.write(zip_bytes)
 ```
 
 ## Development Guide

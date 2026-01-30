@@ -38,7 +38,8 @@ impl Default for MemoryStorage {
     }
 }
 
-#[async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]
 impl StoragePort for MemoryStorage {
     async fn read(&self, path: &str) -> PortResult<Vec<u8>> {
         let files = self.files.read().unwrap();

@@ -1,8 +1,4 @@
-/**
- * WASM module lazy loading
- * 
- * Loads WASM only when first needed to reduce initial bundle impact.
- */
+import type { SaveCheckpointResult, GcResult } from './types';
 
 // Type for WASM storage adapter (passed to WASM functions)
 interface JsStorageAdapter {
@@ -11,15 +7,8 @@ interface JsStorageAdapter {
     delete(path: string): Promise<void>;
     exists(path: string): Promise<boolean>;
     list(dir: string): Promise<string[]>;
-}
-
-// Type for save_checkpoint result
-interface SaveCheckpointResult {
-    manifest: Record<string, unknown>;
-    versionId: string;
-    filesAdded: number;
-    filesModified: number;
-    filesDeleted: number;
+    size(path: string): Promise<number>;
+    list_blobs(): Promise<string[]>;
 }
 
 // Type for WASM exports
@@ -29,21 +18,34 @@ interface WasmExports {
     create_empty_manifest(projectName: string): unknown;
     parse_manifest(manifest: unknown): unknown;
     get_manifest_info(manifest: unknown): { name: string; versionCount: number; fileCount: number };
+    derive_key(passphrase: string, salt: Uint8Array): Uint8Array;
     save_checkpoint(
         manifest: unknown,
         storage: JsStorageAdapter,
         message: string,
-        author: string
+        author: string,
+        encryption_key?: Uint8Array
     ): Promise<SaveCheckpointResult>;
     restore_version(
         manifest: unknown,
         storage: JsStorageAdapter,
-        version_id: string
+        version_id: string,
+        encryption_key?: Uint8Array
     ): Promise<{
         manifest: Record<string, unknown>;
         restoredVersionId: string;
         filesRestored: number;
         filesDeleted: number;
+    }>;
+    gc(
+        manifest: unknown,
+        storage: JsStorageAdapter
+    ): Promise<GcResult>;
+    export_zip(storage: JsStorageAdapter): Promise<Uint8Array>;
+    import_zip(storage: JsStorageAdapter, archive_data: Uint8Array): Promise<{
+        projectName: string;
+        filesImported: number;
+        totalSize: number;
     }>;
 }
 
@@ -91,12 +93,16 @@ export async function initWasm(): Promise<WasmExports> {
             get_manifest_info: wasm.get_manifest_info,
             save_checkpoint: wasm.save_checkpoint,
             restore_version: wasm.restore_version,
+            gc: wasm.gc,
+            derive_key: wasm.derive_key,
+            export_zip: wasm.export_zip,
+            import_zip: wasm.import_zip,
         };
 
         return wasmModule;
     })();
 
-    return initPromise;
+    return initPromise as Promise<WasmExports>;
 }
 
 /**

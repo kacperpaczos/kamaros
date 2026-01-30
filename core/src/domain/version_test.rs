@@ -85,6 +85,7 @@ mod version_tests {
                     hash: Some("sha256hash".to_string()),
                     content_ref: None,
                     deleted: None,
+                    encrypted: None,
                 }),
             ]),
         };
@@ -106,6 +107,7 @@ mod version_tests {
             hash: Some("sha256".to_string()),
             content_ref: Some("delta/v1.patch".to_string()),
             deleted: None,
+            encrypted: None,
         };
         
         let json = serde_json::to_string(&state).unwrap();
@@ -123,6 +125,7 @@ mod version_tests {
             hash: None,
             content_ref: None,
             deleted: Some(true),
+            encrypted: None,
         };
         
         let json = serde_json::to_string(&state).unwrap();
@@ -156,6 +159,7 @@ mod version_tests {
                     hash: Some(format!("hash_{}", i)),
                     content_ref: None,
                     deleted: None,
+                    encrypted: None,
                 },
             );
         }

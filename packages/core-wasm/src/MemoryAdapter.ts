@@ -35,6 +35,16 @@ export class MemoryAdapter implements StorageAdapter {
             .filter((v, i, a) => a.indexOf(v) === i); // unique
     }
 
+    async size(path: string): Promise<number> {
+        const data = this.storage.get(path);
+        return data ? data.length : 0;
+    }
+
+    async listBlobs(): Promise<string[]> {
+        return Array.from(this.storage.keys())
+            .filter(key => key.startsWith('.store/blobs/'));
+    }
+
     /**
      * Clear all stored data (for testing)
      */

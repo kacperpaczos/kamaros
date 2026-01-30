@@ -11,6 +11,8 @@ export interface StorageAdapter {
     delete(path: string): Promise<void>;
     exists(path: string): Promise<boolean>;
     list(dir: string): Promise<string[]>;
+    size(path: string): Promise<number>;
+    listBlobs(): Promise<string[]>;
 }
 
 /**
@@ -55,6 +57,7 @@ export interface FileState {
     hash?: string;
     contentRef?: string;
     deleted?: boolean;
+    encrypted?: boolean;
 }
 
 export interface RenameEntry {
@@ -65,13 +68,39 @@ export interface RenameEntry {
 }
 
 /**
+ * Results
+ */
+export interface SaveCheckpointResult {
+    manifest: Record<string, unknown>;
+    manifestJson?: string;
+    versionId: string;
+    filesAdded: number;
+    filesModified: number;
+    filesDeleted: number;
+}
+
+export interface GcResult {
+    blobsChecked: number;
+    blobsDeleted: number;
+    bytesFreed: number;
+}
+
+export interface ImportZipResult {
+    projectName: string;
+    filesImported: number;
+    totalSize: number;
+}
+
+/**
  * Options for JCFManager operations
  */
 export interface SaveOptions {
     message?: string;
     author?: string;
+    encryptionKey?: Uint8Array;
 }
 
 export interface LoadOptions {
     validateIntegrity?: boolean;
+    encryptionKey?: Uint8Array;
 }

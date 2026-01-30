@@ -2,8 +2,8 @@
 //!
 //! Implementation of DiffPort using the `similar` crate.
 
-use crate::ports::{DiffPort, PortError, PortResult};
-use similar::{ChangeTag, TextDiff};
+use crate::ports::{DiffPort, PortResult};
+use similar::TextDiff;
 
 /// Simple diff implementation using `similar` crate
 pub struct SimpleDiff;
@@ -31,47 +31,16 @@ impl DiffPort for SimpleDiff {
     }
 
     /// Apply unified diff patch to text
-    /// 
-    /// Note: This is a simplified implementation.
-    /// For production, consider using a proper patch library.
     fn apply_patch(&self, text: &str, patch: &str) -> PortResult<String> {
-        // Parse unified diff and apply changes
-        // This is a basic implementation that handles simple cases
-        
         if patch.is_empty() {
             return Ok(text.to_string());
         }
 
-        let mut result_lines: Vec<&str> = text.lines().collect();
-        let patch_lines: Vec<&str> = patch.lines().collect();
-        
-        let mut i = 0;
-        while i < patch_lines.len() {
-            let line = patch_lines[i];
+        let p = diffy::Patch::from_str(patch)
+            .map_err(|e| crate::ports::PortError::PatchFailed(format!("Parse patch error: {}", e)))?;
             
-            // Skip header lines
-            if line.starts_with("---") || line.starts_with("+++") || line.starts_with("@@") {
-                i += 1;
-                continue;
-            }
-            
-            // Parse hunk header to get line numbers
-            if line.starts_with("@@") {
-                // Format: @@ -start,count +start,count @@
-                // For now, we apply changes sequentially
-                i += 1;
-                continue;
-            }
-            
-            i += 1;
-        }
-        
-        // For a proper implementation, we need a real patch parser
-        // This simplified version just returns the original text when
-        // patch cannot be parsed properly
-        
-        // In production, use a crate like `diffy` or `patch`
-        Ok(result_lines.join("\n"))
+        diffy::apply(text, &p)
+            .map_err(|e| crate::ports::PortError::PatchFailed(format!("Apply patch error: {}", e)))
     }
 }
 
@@ -101,5 +70,30 @@ mod tests {
         
         // Empty or minimal patch for identical files
         assert!(!patch.contains("-") || !patch.contains("+"));
+    }
+
+    #[test]
+    fn test_diff_empty_to_content() {
+        let diff = SimpleDiff::new();
+        let old = "";
+        let new = "Hello ZIP";
+        let patch = diff.compute_diff(old, new);
+        
+        assert!(patch.contains("+Hello ZIP"));
+        
+        // Verify application
+        let applied = diff.apply_patch(old, &patch).expect("Apply failed");
+        assert_eq!(applied, new);
+    }
+
+    #[test]
+    fn test_apply_patch_complex() {
+        let diff = SimpleDiff::new();
+        let old = "line1\nline2\nline3";
+        let new = "line1\nmodified\nline3";
+        let patch = diff.compute_diff(old, new);
+        
+        let applied = diff.apply_patch(old, &patch).expect("Apply failed");
+        assert_eq!(applied, new);
     }
 }

@@ -84,6 +84,7 @@ mod manifest_tests {
             current_hash: Some("sha256hash".to_string()),
             created: "2024-01-01T00:00:00Z".to_string(),
             modified: "2024-01-01T00:00:00Z".to_string(),
+            encrypted: None,
         };
         
         let json = serde_json::to_string(&entry).unwrap();

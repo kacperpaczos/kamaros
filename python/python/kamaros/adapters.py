@@ -30,14 +30,31 @@ class MemoryAdapter(StorageAdapter):
     def exists(self, path: str) -> bool:
         return path in self._storage
     
-    def list(self, dir: str) -> list:
+    def list(self, dir: str, recursive: bool = True) -> list:
         prefix = dir.rstrip('/') + '/'
-        return list(set(
-            key[len(prefix):].split('/')[0]
-            for key in self._storage
-            if key.startswith(prefix)
-        ))
+        if recursive:
+            return [
+                key[len(prefix):]
+                for key in self._storage
+                if key.startswith(prefix)
+            ]
+        else:
+            return list(set(
+                key[len(prefix):].split('/')[0]
+                for key in self._storage
+                if key.startswith(prefix)
+            ))
     
+    def size(self, path: str) -> int:
+        if path not in self._storage:
+            raise FileNotFoundError(f"File not found: {path}")
+        return len(self._storage[path])
+
+    def list_blobs(self) -> list:
+        """List all blobs in .store/blobs/."""
+        prefix = ".store/blobs/"
+        return [key[len(prefix):] for key in self._storage if key.startswith(prefix)]
+
     def clear(self) -> None:
         """Clear all stored data."""
         self._storage.clear()
@@ -71,4 +88,20 @@ class FileAdapter(StorageAdapter):
         full_path = self.base_path / dir
         if not full_path.exists():
             return []
-        return [f.name for f in full_path.iterdir()]
+        # Recursive listing for JCF compatibility
+        files = []
+        for f in full_path.rglob('*'):
+            if f.is_file():
+                files.append(str(f.relative_to(full_path)))
+        return files
+
+    def size(self, path: str) -> int:
+        full_path = self.base_path / path
+        return full_path.stat().st_size
+
+    def list_blobs(self) -> list:
+        """List all blobs in .store/blobs/."""
+        blob_path = self.base_path / ".store" / "blobs"
+        if not blob_path.exists():
+            return []
+        return [f.name for f in blob_path.iterdir() if f.is_file()]

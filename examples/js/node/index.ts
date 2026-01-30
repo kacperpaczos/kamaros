@@ -35,7 +35,22 @@ async function main() {
     const files = await manager.listFiles();
     console.log('📂 Files in project:', files);
 
-    console.log('🎉 Done!');
+    // 5. Encryption Demo
+    console.log('\n🔐 Testing Encryption...');
+    const salt = new Uint8Array(16); // In real app, use crypto.getRandomValues and store salt
+    const key = await manager.deriveKey("secret123", salt);
+
+    await manager.addFile("secret.txt", new TextEncoder().encode("Classified Information"));
+    const v2 = await manager.saveCheckpoint("Added encrypted file", { encryptionKey: key });
+    console.log(`✅ Encrypted Snapshot saved! Version: ${v2}`);
+
+    // 6. ZIP Export
+    console.log('\n📦 Exporting to ZIP...');
+    const zipData = await manager.exportZip();
+    await fs.writeFile('demo-export.zip', zipData);
+    console.log(`✅ Exported ${zipData.length} bytes to demo-export.zip`);
+
+    console.log('\n🎉 Done!');
 }
 
 main().catch(console.error);
