@@ -43,6 +43,9 @@ pub struct FileEntry {
     
     pub created: String,
     pub modified: String,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -4,9 +4,9 @@
 //! Implements the Reverse Delta Strategy: HEAD is always full,
 //! history is stored as reverse patches.
 
-use crate::domain::manifest::{FileEntry, FileType, Manifest};
+use crate::domain::manifest::{FileType, Manifest};
 use crate::domain::version::{FileState, Version};
-use crate::ports::{DiffPort, HasherPort, PortResult, StoragePort};
+use crate::ports::{DiffPort, EncryptionPort, HasherPort, PortResult, StoragePort};
 use std::collections::HashMap;
 
 /// Input for SaveCheckpoint use case
@@ -14,10 +14,11 @@ use std::collections::HashMap;
 pub struct SaveCheckpointInput {
     pub message: String,
     pub author: String,
+    pub encryption_key: Option<Vec<u8>>,
 }
 
 /// Output of SaveCheckpoint use case
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct SaveCheckpointOutput {
     pub version_id: String,
     pub files_changed: usize,
@@ -45,25 +46,28 @@ pub enum FileChange {
 /// SaveCheckpoint Use Case
 /// 
 /// Generic over port implementations for testability.
-pub struct SaveCheckpointUseCase<S, D, H> 
+pub struct SaveCheckpointUseCase<S, D, H, E> 
 where
     S: StoragePort,
     D: DiffPort,
     H: HasherPort,
+    E: EncryptionPort,
 {
     storage: S,
     diff: D,
     hasher: H,
+    encryptor: E,
 }
 
-impl<S, D, H> SaveCheckpointUseCase<S, D, H>
+impl<S, D, H, E> SaveCheckpointUseCase<S, D, H, E>
 where
     S: StoragePort,
     D: DiffPort,
     H: HasherPort,
+    E: EncryptionPort,
 {
-    pub fn new(storage: S, diff: D, hasher: H) -> Self {
-        Self { storage, diff, hasher }
+    pub fn new(storage: S, diff: D, hasher: H, encryptor: E) -> Self {
+        Self { storage, diff, hasher, encryptor }
     }
 
     /// Execute the save checkpoint algorithm
@@ -85,11 +89,12 @@ where
             ));
         }
 
-        // Step 2: Process text files (generate reverse patches)
-        self.process_text_files(manifest, &changes, &version_id).await?;
+        // Step 2: Process text files modifications (generate reverse patches for history)
+        // Must run BEFORE process_full_files updates the manifest
+        self.process_text_modifications(manifest, &changes, &version_id, &input.encryption_key).await?;
 
-        // Step 3: Process binary files (CAS)
-        self.process_binary_files(manifest, &changes).await?;
+        // Step 3: Identify files needing full content (all added and modified files)
+        self.process_full_files(manifest, &changes, &input.encryption_key).await?;
 
         // Step 4: Create new Version object
         let version = self.create_version(
@@ -133,16 +138,25 @@ where
             let current_hash = self.hasher.hash(&content);
 
             if let Some(file_entry) = manifest.file_map.get(file_path) {
-                // File exists in manifest - check if modified
-                if file_entry.current_hash.as_ref() != Some(&current_hash) {
-                    changes.push(FileChange::Modified {
+                // File exists in manifest
+                if let Some(old_hash) = &file_entry.current_hash {
+                    // Check if modified
+                    if old_hash != &current_hash {
+                        changes.push(FileChange::Modified {
+                            path: file_path.clone(),
+                            old_hash: old_hash.clone(),
+                            new_hash: current_hash,
+                        });
+                    }
+                } else {
+                    // First time saving this file (even if in manifest) -> Added
+                    changes.push(FileChange::Added {
                         path: file_path.clone(),
-                        old_hash: file_entry.current_hash.clone().unwrap_or_default(),
-                        new_hash: current_hash,
+                        hash: current_hash,
                     });
                 }
             } else {
-                // New file
+                // New file not in manifest
                 changes.push(FileChange::Added {
                     path: file_path.clone(),
                     hash: current_hash,
@@ -160,60 +174,17 @@ where
         Ok(changes)
     }
 
-    /// Step 2: Generate reverse patches for text files
-    async fn process_text_files(
-        &self,
-        manifest: &Manifest,
-        changes: &[FileChange],
-        version_id: &str,
-    ) -> PortResult<()> {
-        for change in changes {
-            let (path, is_text) = match change {
-                FileChange::Modified { path, .. } => {
-                    let entry = manifest.file_map.get(path);
-                    let is_text = entry.map(|e| matches!(e.file_type, FileType::Text)).unwrap_or(false);
-                    (path, is_text)
-                }
-                _ => continue,
-            };
-
-            if !is_text {
-                continue;
-            }
-
-            // Read NEW content (working copy)
-            let new_content = self.storage.read(&format!("content/{}", path)).await?;
-            let new_text = String::from_utf8_lossy(&new_content);
-
-            // Read OLD content (from HEAD version)
-            let old_content = self.get_file_content_from_head(manifest, path).await?;
-            let old_text = String::from_utf8_lossy(&old_content);
-
-            // Compute REVERSE patch: NEW -> OLD
-            // This allows restoring the OLD version from NEW
-            let reverse_patch = self.diff.compute_diff(&new_text, &old_text);
-
-            // Save patch to .store/deltas/{version_id}_{path_hash}.patch
-            let path_hash = self.hasher.hash(path.as_bytes());
-            let patch_path = format!(".store/deltas/{}_{}.patch", version_id, &path_hash[..16]);
-            self.storage.write(&patch_path, reverse_patch.as_bytes()).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Step 3: Process binary files using Content Addressable Storage
-    async fn process_binary_files(
+    /// Step 3: Process ALL added and modified files as full blobs (CAS)
+    /// This ensures HEAD always contains full files.
+    async fn process_full_files(
         &self,
         manifest: &mut Manifest,
         changes: &[FileChange],
+        encryption_key: &Option<Vec<u8>>,
     ) -> PortResult<()> {
         for change in changes {
             let (path, hash) = match change {
                 FileChange::Added { path, hash } | FileChange::Modified { path, new_hash: hash, .. } => {
-                    let entry = manifest.file_map.get(path);
-                    let is_binary = entry.map(|e| matches!(e.file_type, FileType::Binary)).unwrap_or(true);
-                    if !is_binary { continue; }
                     (path, hash)
                 }
                 _ => continue,
@@ -223,15 +194,79 @@ where
             let blob_path = format!(".store/blobs/{}", hash);
             if !self.storage.exists(&blob_path).await? {
                 // Read content and save new blob
-                let content = self.storage.read(&format!("content/{}", path)).await?;
+                let mut content = self.storage.read(&format!("content/{}", path)).await?;
+                
+                if let Some(key) = encryption_key {
+                    content = self.encryptor.encrypt(key, &content).await?;
+                }
+                
                 self.storage.write(&blob_path, &content).await?;
             }
-
-            // Update file entry hash
+            
+            // Update file entry hash and encrypted flag
             if let Some(entry) = manifest.file_map.get_mut(path) {
                 entry.current_hash = Some(hash.clone());
                 entry.modified = chrono_now();
+                entry.encrypted = Some(encryption_key.is_some());
             }
+        }
+
+        Ok(())
+    }
+
+    /// Step 2: Generate reverse patches for text file modifications
+    async fn process_text_modifications(
+        &self,
+        manifest: &Manifest,
+        changes: &[FileChange],
+        version_id: &str,
+        encryption_key: &Option<Vec<u8>>,
+    ) -> PortResult<()> {
+        for change in changes {
+            let (path, old_hash) = match change {
+                FileChange::Modified { path, old_hash, .. } => {
+                    let entry = manifest.file_map.get(path);
+                    let is_text = entry.map(|e| matches!(e.file_type, FileType::Text)).unwrap_or(false);
+                    if !is_text { continue; }
+                    (path, old_hash)
+                }
+                _ => continue,
+            };
+
+            // Read NEW content (working copy)
+            let new_content = self.storage.read(&format!("content/{}", path)).await?;
+            let new_text = String::from_utf8_lossy(&new_content);
+
+            // Read OLD content (from blob store using OLD hash)
+            // HEAD always points to full blobs
+            let old_blob_path = format!(".store/blobs/{}", old_hash);
+            let mut old_content = self.storage.read(&old_blob_path).await?;
+            
+            // Decrypt OLD content if needed
+            let old_entry = manifest.file_map.get(path);
+            let was_encrypted = old_entry.and_then(|e| e.encrypted).unwrap_or(false);
+            
+            if was_encrypted {
+                let key = encryption_key.as_ref()
+                    .ok_or_else(|| crate::ports::PortError::EncryptionError("Key required for encrypted history".into()))?;
+                 old_content = self.encryptor.decrypt(key, &old_content).await?;
+            }
+            
+            let old_text = String::from_utf8_lossy(&old_content);
+
+            // Compute REVERSE patch: NEW -> OLD
+            let reverse_patch = self.diff.compute_diff(&new_text, &old_text);
+
+            // Save patch to .store/deltas/{version_id}_{path_hash}.patch
+            let path_hash = self.hasher.hash(path.as_bytes());
+            let patch_path = format!(".store/deltas/{}_{}.patch", version_id, &path_hash[..16]);
+            
+            let mut patch_data = reverse_patch.into_bytes();
+            if let Some(key) = encryption_key {
+                patch_data = self.encryptor.encrypt(key, &patch_data).await?;
+            }
+            
+            self.storage.write(&patch_path, &patch_data).await?;
         }
 
         Ok(())
@@ -268,12 +303,25 @@ where
                         hash: Some(hash.clone()),
                         content_ref: None,
                         deleted: None,
+                        encrypted: Some(input.encryption_key.is_some()),
                     });
                 }
                 FileChange::Modified { path, new_hash, .. } => {
-                    if let Some(state) = file_states.get_mut(path) {
-                        state.hash = Some(new_hash.clone());
-                        // For text files, add content_ref to the patch
+                    let entry = manifest.file_map.get(path);
+                    let state = file_states.entry(path.clone()).or_insert_with(|| FileState {
+                        inode_id: entry.map(|e| e.inode_id.clone()).unwrap_or_default(),
+                        hash: Some(new_hash.clone()),
+                        content_ref: None,
+                        deleted: None,
+                        encrypted: Some(input.encryption_key.is_some()),
+                    });
+                    
+                    state.hash = Some(new_hash.clone());
+                    state.encrypted = Some(input.encryption_key.is_some());
+                    
+                    // For text files, add content_ref to the patch
+                    let is_text = entry.map(|e| matches!(e.file_type, FileType::Text)).unwrap_or(false);
+                    if is_text {
                         let path_hash = self.hasher.hash(path.as_bytes());
                         state.content_ref = Some(format!(
                             ".store/deltas/{}_{}.patch",
@@ -297,16 +345,6 @@ where
             author: input.author.clone(),
             file_states,
         }
-    }
-
-    /// Helper: Get file content from HEAD version
-    async fn get_file_content_from_head(
-        &self,
-        manifest: &Manifest,
-        path: &str,
-    ) -> PortResult<Vec<u8>> {
-        // For HEAD, content is in /content/ directory
-        self.storage.read(&format!("content/{}", path)).await
     }
 }
 
