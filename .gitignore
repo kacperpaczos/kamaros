@@ -156,3 +156,4 @@ python/python/kamaros/_native.cpython-310-x86_64-linux-gnu.so
 # Demo output directories
 demo-*-store/
 demo-*-store-loaded/.cursor
+test_output*.txt
