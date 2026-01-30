@@ -8,6 +8,7 @@ import json
 import io
 import os
 from datetime import datetime
+import threading
 
 
 def _create_empty_manifest(project_name: str) -> dict:
@@ -38,10 +39,12 @@ class JCFManager:
         >>> manager.save("project.jcf")
     """
     
-    def __init__(self, adapter: "StorageAdapter"):
+    def __init__(self, adapter: "StorageAdapter", encryption_key: Optional[bytes] = None):
         self.adapter = adapter
+        self.encryption_key = encryption_key
         self.manifest: Optional[Dict[str, Any]] = None
         self.working_dir: Dict[str, bytes] = {}
+        self._lock = threading.Lock()
     
     def create_project(self, name: str, description: Optional[str] = None, author: Optional[str] = None) -> None:
         """Create a new empty project."""
@@ -51,6 +54,9 @@ class JCFManager:
         if author:
             self.manifest["metadata"]["author"] = author
         self.working_dir = {}
+        
+        # Persist manifest to storage
+        self.adapter.write(".store/manifest.json", json.dumps(self.manifest, indent=2).encode('utf-8'))
     
     def load(self, path: str) -> None:
         """Load a JCF file from storage."""
@@ -117,25 +123,26 @@ class JCFManager:
     
     def add_file(self, path: str, content: bytes) -> None:
         """Add or update a file in the working directory."""
-        if self.manifest is None:
-            raise ValueError("No project loaded.")
-        
-        self.working_dir[path] = content
-        
-        # Update file map
-        from datetime import datetime
-        import uuid
-        
-        now = datetime.now().isoformat()
-        if path not in self.manifest["fileMap"]:
-            self.manifest["fileMap"][path] = {
-                "inodeId": str(uuid.uuid4()),
-                "type": "text" if self._is_text_file(path) else "binary",
-                "created": now,
-                "modified": now,
-            }
-        else:
-            self.manifest["fileMap"][path]["modified"] = now
+        with self._lock:
+            if self.manifest is None:
+                raise ValueError("No project loaded.")
+            
+            self.working_dir[path] = content
+            
+            # Update file map
+            from datetime import datetime
+            import uuid
+            
+            now = datetime.now().isoformat()
+            if path not in self.manifest["fileMap"]:
+                self.manifest["fileMap"][path] = {
+                    "inodeId": str(uuid.uuid4()),
+                    "type": "text" if self._is_text_file(path) else "binary",
+                    "created": now,
+                    "modified": now,
+                }
+            else:
+                self.manifest["fileMap"][path]["modified"] = now
     
     def get_file(self, path: str) -> Optional[bytes]:
         """Get a file from working directory."""
@@ -155,7 +162,18 @@ class JCFManager:
     
     def get_manifest(self) -> Optional[Dict[str, Any]]:
         """Get current manifest."""
-        return self.manifest
+        with self._lock:
+            return self.manifest
+    
+    def load_manifest(self) -> None:
+        """Reload project manifest from storage."""
+        with self._lock:
+            try:
+                data = self.adapter.read(".store/manifest.json")
+                self.manifest = json.loads(data.decode("utf-8"))
+            except Exception as e:
+                # If .store/manifest.json doesn't exist, it might be a new project or non-expanded JCF
+                raise RuntimeError(f"Could not load manifest: {e}")
     
     def get_project_info(self) -> Optional[Dict[str, Any]]:
         """Get project info."""
@@ -177,27 +195,23 @@ class JCFManager:
             
         import kamaros
         
-        result = kamaros.save_checkpoint(
-            self.manifest,
-            self.working_dir,
-            message,
-            author
-        )
-        
-        # Persist blobs (snapshot storage)
-        if "blobs" in result:
-            for path, content in result["blobs"]:
-                # Content is [u8] from Rust, which is list of ints in Python if not PyBytes?
-                # pythonize converts Vec<u8> to list of integers usually unless configured?
-                # Actually, Vec<u8> via serde/pythonize -> list[int].
-                # We need to convert to bytes.
-                data = bytes(content)
-                self.adapter.write(path, data)
-        
-        # Update local manifest
-        self.manifest = result["manifest"]
-        
-        return result["version_id"]
+        with self._lock:
+            result = kamaros.save_checkpoint(
+                self.manifest,
+                self.adapter,
+                self.working_dir,
+                message,
+                author,
+                self.encryption_key
+            )
+            
+            # Update local manifest
+            self.manifest = result["manifest"]
+            
+            # Persist manifest to storage
+            self.adapter.write(".store/manifest.json", json.dumps(self.manifest, indent=2).encode('utf-8'))
+            
+            return result["version_id"]
 
     def restore_version(self, version_id: str) -> str:
         """
@@ -208,42 +222,51 @@ class JCFManager:
             
         import kamaros
         
-        current_files = self.list_files()
-        
         result = kamaros.restore_version(
             self.manifest,
-            current_files,
-            version_id
+            self.adapter,
+            version_id,
+            self.encryption_key
         )
         
-        # Execute Restoration Plan
+        # Update working directory with restored files
+        # The use case returns a map of changes we should apply locally if needed,
+        # but since we use the adapter bridge, the use case already wrote the files
+        # to the storage if they were missing.
+        # Wait, the RestoreVersionUseCase in core handles RESTORING files to the storage.
+        # We need to refresh our working_dir if it's in-memory.
         
-        # 1. Delete files
-        for path in result["files_to_delete"]:
-            self.delete_file(path)
-            if path in self.working_dir:
-                del self.working_dir[path]
+        # If we use MemoryAdapter, the adapter already has the files.
+        # We just need to sync our working_dir.
         
-        # 2. Restore files
-        for path, blob_ref in result["files_to_restore"].items():
-            # Read blob (handle .store prefix if needed)
-            # Rust returns full path e.g. .store/blobs/hash
-            if not self.adapter.exists(blob_ref):
-                 # Fallback check? Maybe path is relative?
-                 # My MemoryAdapter stores paths exactly as given.
-                 pass
-            
-            content = self.adapter.read(blob_ref)
-            # Convert [u8] to bytes if needed? 
-            # Adapter.read() returns bytes usually.
-            # But wait, did I implementation MemoryAdapter properly?
-            # Yes, MemoryAdapter stores bytes.
-            self.working_dir[path] = content
-            
-        # 3. Update Manifest
+        self.working_dir = {}
+        # We could list the content/ directory from adapter
+        for name in self.adapter.list("content"):
+             self.working_dir[name] = self.adapter.read(f"content/{name}")
+        
+        # Update local manifest
         self.manifest = result["manifest"]
         
+        # Persist manifest to storage
+        self.adapter.write(".store/manifest.json", json.dumps(self.manifest, indent=2).encode('utf-8'))
+        
         return result["restored_version_id"]
+
+    def gc(self) -> Dict[str, Any]:
+        """Run garbage collection to remove unused blobs."""
+        if self.manifest is None:
+            raise ValueError("No project loaded.")
+            
+        import kamaros
+        result = kamaros.gc(self.manifest, self.adapter)
+        return result
+
+    def derive_key(self, passphrase: str, salt: bytes) -> bytes:
+        """Derive an encryption key from a passphrase."""
+        import kamaros
+        key = kamaros.derive_key(passphrase, salt)
+        self.encryption_key = bytes(key)
+        return self.encryption_key
 
     def get_version_info(self, version_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -578,3 +601,11 @@ class StorageAdapter:
     
     def list(self, dir: str) -> list:
         raise NotImplementedError
+
+    def size(self, path: str) -> int:
+        raise NotImplementedError
+
+    def list_blobs(self) -> list:
+        raise NotImplementedError
+
+
