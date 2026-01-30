@@ -12,13 +12,22 @@
  */
 
 import { initWasm, getWasm } from './wasm';
-import type { StorageAdapter, Manifest, SaveOptions, LoadOptions } from './types';
+import type {
+    StorageAdapter,
+    Manifest,
+    SaveOptions,
+    LoadOptions,
+    SaveCheckpointResult,
+    GcResult,
+    ImportZipResult
+} from './types';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 
 export class JCFManager {
     private adapter: StorageAdapter;
     private manifest: Manifest | null = null;
     private workingDir: Map<string, Uint8Array> = new Map();
+    private encryptionKey: Uint8Array | null = null;
 
     private constructor(adapter: StorageAdapter) {
         this.adapter = adapter;
@@ -195,6 +204,15 @@ export class JCFManager {
     }
 
     /**
+     * Derive encryption key from passphrase
+     */
+    async deriveKey(passphrase: string, salt: Uint8Array): Promise<Uint8Array> {
+        const wasm = getWasm();
+        this.encryptionKey = wasm.derive_key(passphrase, salt);
+        return this.encryptionKey;
+    }
+
+    /**
      * Save checkpoint (create new version)
      * Uses WASM save_checkpoint for change detection and version creation
      */
@@ -205,6 +223,7 @@ export class JCFManager {
 
         const wasm = getWasm();
         const author = options?.author ?? 'unknown';
+        const key = options?.encryptionKey ?? this.encryptionKey ?? undefined;
 
         // Create WASM-compatible storage adapter from workingDir
         const wasmStorageAdapter = this.createWasmStorageAdapter();
@@ -218,28 +237,31 @@ export class JCFManager {
                 wasmManifest,
                 wasmStorageAdapter,
                 message,
-                author
-            ) as {
-                manifest: Record<string, unknown>;
-                versionId: string;
-                filesAdded: number;
-                filesModified: number;
-                filesDeleted: number;
-            };
-
-            // Update local manifest from WASM result
-            this.manifest = this.normalizeManifest(result.manifest);
+                author,
+                key
+            );
+            if (result.manifestJson) {
+                const raw = JSON.parse(result.manifestJson);
+                this.manifest = this.normalizeManifest(raw);
+            } else {
+                this.manifest = this.normalizeManifest(result.manifest);
+            }
 
             return result.versionId;
-        } catch (e) {
-            throw new Error(`saveCheckpoint failed: ${e}`);
+        } catch (e: any) {
+            console.error('saveCheckpoint raw error:', e);
+            let msg = e.toString();
+            if (typeof e === 'object') {
+                try { msg = JSON.stringify(e); } catch { }
+            }
+            throw new Error(`saveCheckpoint failed: ${msg}`);
         }
     }
 
     /**
      * Restore version (checkout)
      */
-    async restoreVersion(versionId: string): Promise<void> {
+    async restoreVersion(versionId: string, options?: LoadOptions): Promise<void> {
         if (!this.manifest) {
             throw new Error('No project loaded.');
         }
@@ -247,16 +269,15 @@ export class JCFManager {
         const wasm = getWasm();
         const wasmStorageAdapter = this.createWasmStorageAdapter();
         const wasmManifest = this.toWasmManifest(this.manifest);
+        const key = options?.encryptionKey ?? this.encryptionKey ?? undefined;
 
         try {
             const result = await wasm.restore_version(
                 wasmManifest,
                 wasmStorageAdapter,
-                versionId
-            ) as {
-                manifest: Record<string, unknown>;
-                restoredVersionId: string;
-            };
+                versionId,
+                key
+            );
 
             // Update local manifest
             this.manifest = this.normalizeManifest(result.manifest);
@@ -266,70 +287,133 @@ export class JCFManager {
     }
 
     /**
+     * Garbage Collection
+     */
+    async gc(): Promise<GcResult> {
+        if (!this.manifest) {
+            throw new Error('No project loaded.');
+        }
+
+        const wasm = getWasm();
+        const wasmStorageAdapter = this.createWasmStorageAdapter();
+        const wasmManifest = this.toWasmManifest(this.manifest);
+
+        const result = await wasm.gc(wasmManifest, wasmStorageAdapter);
+        return result;
+    }
+
+    /**
+     * Export project as ZIP archive
+     */
+    async exportZip(): Promise<Uint8Array> {
+        if (!this.manifest) {
+            throw new Error('No project loaded.');
+        }
+
+        // Ensure manifest is saved to storage before exporting
+        // WASM ExportArchiveUseCase reads from storage directly.
+        const manifestJson = JSON.stringify(this.manifest, null, 2);
+        await this.adapter.write('.store/manifest.json', strToU8(manifestJson));
+
+        const wasm = getWasm();
+        const wasmStorageAdapter = this.createWasmStorageAdapter();
+        return wasm.export_zip(wasmStorageAdapter);
+    }
+
+    /**
+     * Import project from ZIP archive
+     */
+    async importZip(zipData: Uint8Array): Promise<ImportZipResult> {
+        const wasm = getWasm();
+        const wasmStorageAdapter = this.createWasmStorageAdapter();
+
+        try {
+            const result = await wasm.import_zip(wasmStorageAdapter, zipData);
+
+            // Reload manifest from storage (Import overwrites it in adapter)
+            // Note: .store/manifest.json goes to adapter, content/ goes to workingDir via wrapper logic
+            const manifestData = await this.adapter.read('.store/manifest.json');
+            const manifestJson = strFromU8(manifestData);
+            const rawManifest = JSON.parse(manifestJson);
+
+            this.manifest = this.normalizeManifest(rawManifest);
+
+            return result as ImportZipResult;
+        } catch (e) {
+            throw new Error(`importZip failed: ${e}`);
+        }
+    }
+
+    /**
      * Create a WASM-compatible storage adapter from workingDir
      * This adapter provides read/write/delete/exists/list methods
      */
     private createWasmStorageAdapter() {
+        const adapter = this.adapter;
         const workingDir = this.workingDir;
 
         return {
             async read(path: string): Promise<Uint8Array> {
-                // Handle content/ vs .store/ paths
-                // If path starts with content/, strip it.
-                // If path starts with .store/, keep it?
-                // logic:
-                // path: "content/file.txt" -> "file.txt"
-                // path: ".store/blobs/x" -> ".store/blobs/x"
-                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
-                const data = workingDir.get(cleanPath);
-                if (!data) {
-                    throw new Error(`File not found: ${path}`);
+                if (path.startsWith('content/')) {
+                    const cleanPath = path.slice(8);
+                    const data = workingDir.get(cleanPath);
+                    if (data) return data;
                 }
-                return data;
+                return adapter.read(path);
             },
 
             async write(path: string, data: Uint8Array): Promise<void> {
-                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
-                workingDir.set(cleanPath, data);
+                if (path.startsWith('content/')) {
+                    const cleanPath = path.slice(8);
+                    workingDir.set(cleanPath, data);
+                    return;
+                }
+                return adapter.write(path, data);
             },
 
             async delete(path: string): Promise<void> {
-                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
-                workingDir.delete(cleanPath);
+                if (path.startsWith('content/')) {
+                    const cleanPath = path.slice(8);
+                    workingDir.delete(cleanPath);
+                    return;
+                }
+                return adapter.delete(path);
             },
 
             async exists(path: string): Promise<boolean> {
-                const cleanPath = path.startsWith('content/') ? path.slice(8) : path;
-                return workingDir.has(cleanPath);
+                if (path.startsWith('content/')) {
+                    const cleanPath = path.slice(8);
+                    if (workingDir.has(cleanPath)) return true;
+                }
+                return adapter.exists(path);
             },
 
             async list(dir: string): Promise<string[]> {
-                // Return all keys that would be under the dir
-                // Dir: "content/" -> return "file.txt"
-                // Dir: ".store/" -> return "blobs/x" ?
-                // The iteration over workingDir keys:
-                // "file.txt" -> matches content/
-                // ".store/blobs/x" -> matches .store/
+                if (dir === 'content' || dir === 'content/' || dir.startsWith('content/')) {
+                    // Logic to emulate directory listing from flat workingDir keys
+                    const prefix = dir.endsWith('/') ? dir : `${dir}/`;
+                    const relativePrefix = prefix.slice(8); // 'content/'.length
 
-                const prefix = dir.startsWith('content/') ? '' : dir;
-                // If dir is content/, we want files that do NOT start with .store
-                const isContent = dir.startsWith('content/') || dir === '';
-
-                const files: string[] = [];
-                for (const key of workingDir.keys()) {
-                    if (key.startsWith('.store/')) {
-                        if (!isContent && key.startsWith(prefix)) {
-                            files.push(key);
-                        }
-                    } else {
-                        // It's a content file
-                        if (isContent) {
-                            files.push(key);
-                        }
-                    }
+                    return Array.from(workingDir.keys())
+                        .filter(k => k.startsWith(relativePrefix) && k !== relativePrefix)
+                        .map(k => k.slice(relativePrefix.length).split('/')[0])
+                        .filter((v, i, a) => v && a.indexOf(v) === i);
                 }
-                return files;
+                return adapter.list(dir);
             },
+
+            async size(path: string): Promise<number> {
+                if (path.startsWith('content/')) {
+                    const cleanPath = path.slice(8);
+                    const data = workingDir.get(cleanPath);
+                    if (data) return data.length;
+                }
+                return adapter.size(path);
+            },
+
+            async list_blobs(): Promise<string[]> {
+                return adapter.listBlobs();
+            }
         };
     }
 
@@ -380,12 +464,36 @@ export class JCFManager {
     }
 
     private normalizeManifest(raw: Record<string, unknown>): Manifest {
+        const fileMapRaw = raw['file_map'] || raw['fileMap'];
+        const fileMap = fileMapRaw instanceof Map
+            ? Object.fromEntries(fileMapRaw)
+            : (fileMapRaw || {});
+
+        const versionHistoryRaw = (raw['version_history'] || raw['versionHistory'] || []) as any[];
+        const versionHistory = versionHistoryRaw.map(v => {
+            const fileStatesRaw = v.fileStates || v.file_states;
+            const fileStates = fileStatesRaw instanceof Map
+                ? Object.fromEntries(fileStatesRaw)
+                : (fileStatesRaw || {});
+
+            return {
+                id: v.id,
+                parentId: v.parentId || v.parent_id,
+                timestamp: v.timestamp,
+                message: v.message,
+                author: v.author,
+                fileStates: fileStates,
+            } as any; // Cast to avoid strict type checking on normalized obj
+        });
+
         return {
             formatVersion: (raw['format_version'] || raw['formatVersion'] || '1.0.0') as string,
             metadata: (raw['metadata'] || {}) as Manifest['metadata'],
-            fileMap: (raw['file_map'] || raw['fileMap'] || {}) as Manifest['fileMap'],
-            versionHistory: (raw['version_history'] || raw['versionHistory'] || []) as Manifest['versionHistory'],
-            refs: (raw['refs'] || { head: '' }) as Manifest['refs'],
+            fileMap: fileMap as Manifest['fileMap'],
+            versionHistory: versionHistory as Manifest['versionHistory'],
+            refs: (raw['refs'] instanceof Map
+                ? Object.fromEntries(raw['refs'])
+                : (raw['refs'] || { head: '' })) as Manifest['refs'],
             renameLog: (raw['rename_log'] || raw['renameLog'] || []) as Manifest['renameLog'],
         };
     }

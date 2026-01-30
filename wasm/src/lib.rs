@@ -4,12 +4,14 @@
 //! Iteration 3: SaveCheckpoint integration with JsStorageAdapter.
 
 use wasm_bindgen::prelude::*;
-use kamaros_corelib::domain::manifest::{Manifest, ProjectMetadata, FileEntry, FileType};
-use kamaros_corelib::domain::version::{Version, FileState};
+use kamaros_corelib::domain::manifest::{Manifest, ProjectMetadata};
 use std::collections::HashMap;
 
 mod js_adapter;
 pub use js_adapter::JsStorageAdapter;
+
+mod error;
+pub use error::KamarosError;
 
 // Better panic messages in browser console
 #[wasm_bindgen(start)]
@@ -27,6 +29,17 @@ pub fn version() -> String {
 #[wasm_bindgen]
 pub fn greet(name: &str) -> String {
     format!("Hello from Kamaros WASM, {}!", name)
+}
+
+/// Derive key from passphrase
+#[wasm_bindgen]
+pub fn derive_key(passphrase: &str, salt: &[u8]) -> Result<Vec<u8>, JsValue> {
+    use kamaros_corelib::infrastructure::AesGcmEncryptor;
+    use kamaros_corelib::ports::EncryptionPort;
+    
+    let encryptor = AesGcmEncryptor::new();
+    encryptor.derive_key(passphrase, salt)
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())
 }
 
 /// Create empty manifest
@@ -48,18 +61,18 @@ pub fn create_empty_manifest(project_name: &str) -> Result<JsValue, JsValue> {
     };
     
     serde_wasm_bindgen::to_value(&manifest)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())
 }
 
 /// Parse manifest from JavaScript object
 #[wasm_bindgen]
 pub fn parse_manifest(js_manifest: JsValue) -> Result<JsValue, JsValue> {
     let manifest: Manifest = serde_wasm_bindgen::from_value(js_manifest)
-        .map_err(|e| JsValue::from_str(&format!("Parse error: {}", e)))?;
+        .map_err(|e| KamarosError::from(format!("Parse error: {}", e)).to_js())?;
     
     // Return back to verify round-trip
     serde_wasm_bindgen::to_value(&manifest)
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())
 }
 
 /// Get manifest info (project name, version count)
@@ -91,121 +104,69 @@ pub async fn save_checkpoint(
     js_storage: JsStorageAdapter,
     message: &str,
     author: &str,
+    encryption_key: Option<Vec<u8>>,
 ) -> Result<JsValue, JsValue> {
+    use kamaros_corelib::application::save_checkpoint::{SaveCheckpointUseCase, SaveCheckpointInput};
+    use kamaros_corelib::infrastructure::{Sha256Hasher, SimpleDiff, AesGcmEncryptor};
+
     let mut manifest: Manifest = serde_wasm_bindgen::from_value(js_manifest)
-        .map_err(|e| JsValue::from_str(&format!("Parse manifest error: {}", e)))?;
+        .map_err(|e| KamarosError::from(format!("Parse manifest error: {}", e)).to_js())?;
     
     let storage = js_adapter::JsStorageWrapper::new(js_storage);
+    let diff = SimpleDiff::new();
+    let hasher = Sha256Hasher::new();
+    let encryptor = AesGcmEncryptor::new();
+
+    let use_case = SaveCheckpointUseCase::new(storage, diff, hasher, encryptor);
     
-    // Generate new version ID
-    let version_id = uuid::Uuid::new_v4().to_string();
-    let parent_id = manifest.refs.get("head").cloned().filter(|s| !s.is_empty());
-    
-    // Get current files from storage
-    let current_files = storage.list("content/").await
-        .map_err(|e| JsValue::from_str(&e))?;
-    
-    // Detect changes by comparing with manifest's file_map
-    let mut file_states: HashMap<String, FileState> = HashMap::new();
-    let mut files_added = 0u32;
-    let mut files_modified = 0u32;
-    let mut files_deleted = 0u32;
-    
-    // Check current files
-    for file_path in &current_files {
-        let content = storage.read(&format!("content/{}", file_path)).await
-            .map_err(|e| JsValue::from_str(&e))?;
-        let hash = compute_sha256(&content);
-        
-        // CAS Strategy: Store content in blobs if not exists
-        let blob_path = format!(".store/blobs/{}", hash);
-        if !storage.exists(&blob_path).await.map_err(|e| JsValue::from_str(&e))? {
-            // Write blob
-            storage.write(&blob_path, &content).await
-                .map_err(|e| JsValue::from_str(&e))?;
-        }
-        
-        let inode_id = if let Some(entry) = manifest.file_map.get(file_path) {
-            // Check if modified
-            if entry.current_hash.as_ref() != Some(&hash) {
-                files_modified += 1;
-            }
-            entry.inode_id.clone()
-        } else {
-            // New file
-            files_added += 1;
-            uuid::Uuid::new_v4().to_string()
-        };
-        
-        file_states.insert(file_path.clone(), FileState {
-            inode_id: inode_id.clone(),
-            hash: Some(hash.clone()),
-            content_ref: Some(format!("blobs/{}", hash)), // Store reference
-            deleted: None,
-        });
-        
-        // Update file_map
-        let now = current_timestamp();
-        manifest.file_map.entry(file_path.clone())
-            .and_modify(|e| {
-                e.current_hash = Some(hash.clone());
-                e.modified = now.clone();
-            })
-            .or_insert_with(|| FileEntry {
-                inode_id,
-                file_type: infer_file_type(file_path),
-                created: now.clone(),
-                modified: now,
-                current_hash: Some(hash),
-            });
-    }
-    
-    // Check for deleted files
-    let current_set: std::collections::HashSet<_> = current_files.iter().collect();
-    let deleted_paths: Vec<_> = manifest.file_map.keys()
-        .filter(|p| !current_set.contains(p))
-        .cloned()
-        .collect();
-    
-    for path in deleted_paths {
-        files_deleted += 1;
-        if let Some(entry) = manifest.file_map.get(&path) {
-            file_states.insert(path.clone(), FileState {
-                inode_id: entry.inode_id.clone(),
-                hash: None,
-                content_ref: None,
-                deleted: Some(true),
-            });
-        }
-    }
-    
-    // Create version
-    let version = Version {
-        id: version_id.clone(),
-        parent_id,
-        timestamp: current_timestamp(),
+    let input = SaveCheckpointInput {
         message: message.to_string(),
         author: author.to_string(),
-        file_states,
+        encryption_key,
     };
-    
-    // Update manifest
-    manifest.version_history.push(version);
-    manifest.refs.insert("head".to_string(), version_id.clone());
-    manifest.metadata.last_modified = current_timestamp();
+
+    let output = use_case.execute(&mut manifest, input).await
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())?;
     
     // Create result object
     let result = js_sys::Object::new();
-    let updated_manifest = serde_wasm_bindgen::to_value(&manifest)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
-    
-    js_sys::Reflect::set(&result, &"manifest".into(), &updated_manifest)?;
-    js_sys::Reflect::set(&result, &"versionId".into(), &version_id.into())?;
-    js_sys::Reflect::set(&result, &"filesAdded".into(), &files_added.into())?;
-    js_sys::Reflect::set(&result, &"filesModified".into(), &files_modified.into())?;
-    js_sys::Reflect::set(&result, &"filesDeleted".into(), &files_deleted.into())?;
+    js_sys::Reflect::set(&result, &"manifest".into(), &serde_wasm_bindgen::to_value(&manifest)
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())?)?;
+    // Fallback: return JSON string to avoid serde_wasm_bindgen Map issues
+    let manifest_json = serde_json::to_string(&manifest)
+        .map_err(|e| JsValue::from_str(&format!("JSON serialization failed: {}", e)))?;
+    js_sys::Reflect::set(&result, &"manifestJson".into(), &JsValue::from_str(&manifest_json))?;
+
+    js_sys::Reflect::set(&result, &"versionId".into(), &output.version_id.into())?;
+    js_sys::Reflect::set(&result, &"filesAdded".into(), &(output.files_added as u32).into())?;
+    js_sys::Reflect::set(&result, &"filesModified".into(), &(output.files_changed as u32).into())?;
+    js_sys::Reflect::set(&result, &"filesDeleted".into(), &(output.files_deleted as u32).into())?;
     
     Ok(result.into())
+}
+
+/// Run Garbage Collection
+#[wasm_bindgen]
+pub async fn gc(js_manifest: JsValue, js_storage: JsStorageAdapter) -> Result<JsValue, JsValue> {
+    let manifest: Manifest = serde_wasm_bindgen::from_value(js_manifest)
+        .map_err(|e| KamarosError::from(format!("Parse error: {}", e)).to_js())?;
+        
+    let storage = js_adapter::JsStorageWrapper::new(js_storage);
+    
+    // Use Arc for shared ownership if needed by GC implementation detail, 
+    // but here we can just pass the storage wrapper if GC takes ownership or reference.
+    // Core GC takes `S: StoragePort`. JsStorageWrapper implements it.
+    
+    let gc = kamaros_corelib::application::garbage_collect::GcUseCase::new(storage);
+    let result = gc.run(&manifest).await
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())?;
+        
+    let js_result = js_sys::Object::new();
+    js_sys::Reflect::set(&js_result, &"blobsChecked".into(), &(result.blobs_checked as u32).into())?;
+    js_sys::Reflect::set(&js_result, &"blobsDeleted".into(), &(result.blobs_deleted as u32).into())?;
+    js_sys::Reflect::set(&js_result, &"bytesFreed".into(), &(result.bytes_freed as u32).into())?;
+    
+    Ok(js_result.into())
 }
 
 /// Restore version - checkout specific version
@@ -220,112 +181,74 @@ pub async fn restore_version(
     js_manifest: JsValue,
     js_storage: JsStorageAdapter,
     version_id: &str,
+    encryption_key: Option<Vec<u8>>,
 ) -> Result<JsValue, JsValue> {
+    use kamaros_corelib::application::restore_version::{RestoreVersionUseCase, RestoreVersionInput};
+    use kamaros_corelib::infrastructure::{SimpleDiff, AesGcmEncryptor};
+
     let mut manifest: Manifest = serde_wasm_bindgen::from_value(js_manifest)
-        .map_err(|e| JsValue::from_str(&format!("Parse manifest error: {}", e)))?;
+        .map_err(|e| KamarosError::from(format!("Parse manifest error: {}", e)).to_js())?;
     
     let storage = js_adapter::JsStorageWrapper::new(js_storage);
+    let diff = SimpleDiff::new();
+    let encryptor = AesGcmEncryptor::new();
+
+    let use_case = RestoreVersionUseCase::new(storage, diff, encryptor);
     
-    // Find target version
-    let target_version = manifest.version_history.iter()
-        .find(|v| v.id == version_id)
-        .ok_or_else(|| JsValue::from_str(&format!("Version {} not found", version_id)))?;
+    let input = RestoreVersionInput {
+        target_version_id: version_id.to_string(),
+        force: true, // WASM bindings default to force for now
+        encryption_key,
+    };
+
+    let output = use_case.execute(&mut manifest, input).await
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())?;
         
-    let final_files = &target_version.file_states;
-    let mut files_restored = 0u32;
-    let mut files_deleted = 0u32;
-    
-    // 1. Restore files from version state
-    for (path, state) in final_files {
-        if state.deleted.unwrap_or(false) {
-            // Ensure deleted
-            if storage.exists(&format!("content/{}", path)).await.map_err(|e| JsValue::from_str(&e))? {
-                storage.delete(&format!("content/{}", path)).await.map_err(|e| JsValue::from_str(&e))?;
-                files_deleted += 1;
-            }
-            continue;
-        }
-        
-        // Restore content
-        // Try content_ref first, then hash
-        let blob_path = if let Some(ref r) = state.content_ref {
-             format!(".store/{}", r)
-        } else if let Some(ref h) = state.hash {
-             format!(".store/blobs/{}", h)
-        } else {
-            // No content ref or hash? Skip or error?
-            // Existing file might be kept if no change, but here we assume full restore
-             continue; 
-        };
-        
-        if storage.exists(&blob_path).await.map_err(|e| JsValue::from_str(&e))? {
-             let content = storage.read(&blob_path).await.map_err(|e| JsValue::from_str(&e))?;
-             storage.write(&format!("content/{}", path), &content).await.map_err(|e| JsValue::from_str(&e))?;
-             files_restored += 1;
-        } else {
-             return Err(JsValue::from_str(&format!("Missing blob for file {}: {}", path, blob_path)));
-        }
-    }
-    
-    // 2. Cleanup: Delete files in working dir that are NOT in target version
-    // (This matches 'git checkout' behavior of removing untracked/extra files if we want exact state match,
-    // actually git checkout usually keeps untracked files, but restores tracked ones.
-    // Kamaros Core RestoreVersion deletes files that exist in HEAD but not in Target.
-    // Here we should probably check what's in current directory vs target.)
-    
-    let current_files = storage.list("content/").await.map_err(|e| JsValue::from_str(&e))?;
-    for file in current_files {
-        if !final_files.contains_key(&file) {
-             // File exists in workspace but not in target version
-             // Is it tracked? If it was in Manifest.file_map (HEAD), it should be deleted.
-             // If it's untracked, maybe keep it?
-             // Core logic: "Delete files that exist in HEAD but not in Target"
-             if manifest.file_map.contains_key(&file) {
-                 storage.delete(&format!("content/{}", file)).await.map_err(|e| JsValue::from_str(&e))?;
-                 files_deleted += 1;
-             }
-        }
-    }
-    
-    // Update refs
-    manifest.refs.insert("head".to_string(), version_id.to_string());
-    
     // Return result
     let result = js_sys::Object::new();
     let updated_manifest = serde_wasm_bindgen::to_value(&manifest)
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        .map_err(|e| KamarosError::from(e.to_string()).to_js())?;
         
     js_sys::Reflect::set(&result, &"manifest".into(), &updated_manifest)?;
-    js_sys::Reflect::set(&result, &"restoredVersionId".into(), &version_id.into())?;
-    js_sys::Reflect::set(&result, &"filesRestored".into(), &files_restored.into())?;
-    js_sys::Reflect::set(&result, &"filesDeleted".into(), &files_deleted.into())?;
+    js_sys::Reflect::set(&result, &"restoredVersionId".into(), &output.restored_version_id.into())?;
+    js_sys::Reflect::set(&result, &"filesRestored".into(), &(output.files_restored as u32).into())?;
+    js_sys::Reflect::set(&result, &"patchesApplied".into(), &(output.patches_applied as u32).into())?;
     
     Ok(result.into())
 }
 
 
+/// Export project as ZIP archive
+#[wasm_bindgen]
+pub async fn export_zip(js_storage: JsStorageAdapter) -> Result<Vec<u8>, JsValue> {
+    use kamaros_corelib::application::export_archive::ExportArchiveUseCase;
+    let storage = js_adapter::JsStorageWrapper::new(js_storage);
+    let use_case = ExportArchiveUseCase::new(storage);
+    use_case.execute().await.map_err(|e| KamarosError::from(e.to_string()).to_js())
+}
+
+/// Import project from ZIP archive
+#[wasm_bindgen]
+pub async fn import_zip(js_storage: JsStorageAdapter, archive_data: Vec<u8>) -> Result<JsValue, JsValue> {
+    use kamaros_corelib::application::import_archive::{ImportArchiveUseCase, ImportArchiveInput};
+    let storage = js_adapter::JsStorageWrapper::new(js_storage);
+    let use_case = ImportArchiveUseCase::new(storage);
+    let input = ImportArchiveInput { archive_data };
+    
+    let result = use_case.execute(input).await.map_err(|e| KamarosError::from(e.to_string()).to_js())?;
+    
+    let js_result = js_sys::Object::new();
+    js_sys::Reflect::set(&js_result, &"projectName".into(), &result.project_name.into())?;
+    js_sys::Reflect::set(&js_result, &"filesImported".into(), &(result.files_imported as u32).into())?;
+    js_sys::Reflect::set(&js_result, &"totalSize".into(), &(result.total_size as u32).into())?;
+    
+    Ok(js_result.into())
+}
+
 // Helper: Get current timestamp using JS Date API
 fn current_timestamp() -> String {
     let date = js_sys::Date::new_0();
     date.to_iso_string().as_string().unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
-}
-
-// Helper: Compute SHA-256 hash (simplified version for WASM)
-fn compute_sha256(data: &[u8]) -> String {
-    use sha2::{Sha256, Digest};
-    let mut hasher = Sha256::new();
-    hasher.update(data);
-    format!("{:x}", hasher.finalize())
-}
-
-// Helper: Infer file type from extension
-fn infer_file_type(path: &str) -> FileType {
-    let text_extensions = [".txt", ".md", ".json", ".js", ".ts", ".css", ".html", ".xml", ".yaml", ".yml", ".rs", ".py"];
-    if text_extensions.iter().any(|ext| path.to_lowercase().ends_with(ext)) {
-        FileType::Text
-    } else {
-        FileType::Binary
-    }
 }
 
 #[cfg(test)]

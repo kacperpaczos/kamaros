@@ -6,6 +6,23 @@
  */
 export function create_empty_manifest(project_name: string): any;
 
+export function debug_diff(old: string, _new: string): string;
+
+/**
+ * Derive key from passphrase
+ */
+export function derive_key(passphrase: string, salt: Uint8Array): Uint8Array;
+
+/**
+ * Export project as ZIP archive
+ */
+export function export_zip(js_storage: JsStorageAdapter): Promise<Uint8Array>;
+
+/**
+ * Run Garbage Collection
+ */
+export function gc(js_manifest: any, js_storage: JsStorageAdapter): Promise<any>;
+
 /**
  * Get manifest info (project name, version count)
  */
@@ -15,6 +32,11 @@ export function get_manifest_info(js_manifest: any): any;
  * Simple test function
  */
 export function greet(name: string): string;
+
+/**
+ * Import project from ZIP archive
+ */
+export function import_zip(js_storage: JsStorageAdapter, archive_data: Uint8Array): Promise<any>;
 
 export function init(): void;
 
@@ -32,7 +54,7 @@ export function parse_manifest(js_manifest: any): any;
  * @param js_storage - StorageAdapter
  * @param version_id - target version ID
  */
-export function restore_version(js_manifest: any, js_storage: JsStorageAdapter, version_id: string): Promise<any>;
+export function restore_version(js_manifest: any, js_storage: JsStorageAdapter, version_id: string, encryption_key?: Uint8Array | null): Promise<any>;
 
 /**
  * Save checkpoint - create a new version
@@ -44,7 +66,7 @@ export function restore_version(js_manifest: any, js_storage: JsStorageAdapter, 
  * @param message - commit message
  * @param author - author name
  */
-export function save_checkpoint(js_manifest: any, js_storage: JsStorageAdapter, message: string, author: string): Promise<any>;
+export function save_checkpoint(js_manifest: any, js_storage: JsStorageAdapter, message: string, author: string, encryption_key?: Uint8Array | null): Promise<any>;
 
 /**
  * Get library version
@@ -56,11 +78,16 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly create_empty_manifest: (a: number, b: number) => [number, number, number];
+    readonly debug_diff: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly derive_key: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly export_zip: (a: any) => any;
+    readonly gc: (a: any, b: any) => any;
     readonly get_manifest_info: (a: any) => [number, number, number];
     readonly greet: (a: number, b: number) => [number, number];
+    readonly import_zip: (a: any, b: number, c: number) => any;
     readonly parse_manifest: (a: any) => [number, number, number];
-    readonly restore_version: (a: any, b: any, c: number, d: number) => any;
-    readonly save_checkpoint: (a: any, b: any, c: number, d: number, e: number, f: number) => any;
+    readonly restore_version: (a: any, b: any, c: number, d: number, e: number, f: number) => any;
+    readonly save_checkpoint: (a: any, b: any, c: number, d: number, e: number, f: number, g: number, h: number) => any;
     readonly version: () => [number, number];
     readonly init: () => void;
     readonly wasm_bindgen__closure__destroy__h47003da822dc748c: (a: number, b: number) => void;

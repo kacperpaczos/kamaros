@@ -134,6 +134,17 @@ export class OPFSAdapter implements StorageAdapter {
         return files;
     }
 
+    async size(path: string): Promise<number> {
+        const { dir, fileName } = await this.getDirectoryForPath(path);
+        const fileHandle = await dir.getFileHandle(fileName);
+        const file = await fileHandle.getFile();
+        return file.size;
+    }
+
+    async listBlobs(): Promise<string[]> {
+        return this.list('.store/blobs');
+    }
+
     private async listRecursive(
         handle: FileSystemDirectoryHandle,
         prefix: string,

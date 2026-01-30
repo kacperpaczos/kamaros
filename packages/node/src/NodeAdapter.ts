@@ -43,4 +43,19 @@ export class NodeAdapter implements StorageAdapter {
             return [];
         }
     }
+
+    async size(filePath: string): Promise<number> {
+        const fullPath = path.join(this.basePath, filePath);
+        const stats = await fs.stat(fullPath);
+        return stats.size;
+    }
+
+    async listBlobs(): Promise<string[]> {
+        const blobsPath = path.join(this.basePath, '.store', 'blobs');
+        try {
+            return await fs.readdir(blobsPath);
+        } catch {
+            return [];
+        }
+    }
 }
